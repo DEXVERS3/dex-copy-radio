@@ -1,6 +1,6 @@
 export const metadata = {
-  title: "Dex App",
-  description: "Dex App",
+  title: "Dex Radio",
+  description: "Dex Radio",
 };
 
 export default function RootLayout({ children }) {
