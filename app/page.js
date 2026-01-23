@@ -3,22 +3,23 @@
 import { useMemo, useState } from 'react';
 
 const MODES = {
-  signal: {
-    label: 'Signal',
-    hint: 'What do you want to say publicly?',
+  "15": {
+    label: ":15",
+    hint: "Brand + offer + audience + tone + CTA + must-say (if any).",
   },
-  conversation: {
-    label: 'Conversation',
-    hint: 'What do you want to say to one person?',
+  "30": {
+    label: ":30",
+    hint: "Same as :15, plus one quick story beat or proof point.",
   },
-  strategy: {
-    label: 'Strategy',
-    hint: 'What are you trying to decide or win?',
+  "60": {
+    label: ":60",
+    hint: "Same as :30, plus a second beat + clearer benefit + cleaner close.",
   },
 };
 
+
 export default function Home() {
-  const [mode, setMode] = useState('signal');
+  const [mode, setMode] = useState("30");
   const [text, setText] = useState('');
   const [out, setOut] = useState('');
   const [busy, setBusy] = useState(false);
