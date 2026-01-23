@@ -112,7 +112,8 @@ export default function Home() {
           }}
         />
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
+
           <button
             type="button"
             onClick={generate}
