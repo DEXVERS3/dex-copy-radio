@@ -90,29 +90,7 @@ export default function Home() {
           <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio Copy.</span> On Demand.
         </div>
 
-        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-          {Object.entries(MODES).map(([k, v]) => {
-            const active = mode === k;
-            return (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setMode(k)}
-                style={{
-                  background: active ? '#ffffff' : 'transparent',
-                  color: active ? '#000' : '#fff',
-                  border: active ? '1px solid #fff' : '1px solid #2a2a2a',
-                  padding: '8px 12px',
-                  borderRadius: 999,
-                  fontSize: 13,
-                  cursor: 'pointer',
-                }}
-              >
-                {v.label}
-              </button>
-            );
-          })}
-        </div>
+       
 
         <div style={{ marginTop: 18, fontSize: 12, color: '#b5b5b5' }}>Input</div>
         <textarea
@@ -149,7 +127,19 @@ export default function Home() {
               cursor: busy || !text.trim() ? 'not-allowed' : 'pointer',
             }}
           >
-            {busy ? 'Generating…' : 'Generate in My Voice'}
+<div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+  // PASTE :15 / :30 / :60 BUTTON BLOCK HERE
+
+  <button
+    type="button"
+    onClick={generate}
+    disabled={busy}
+  >
+    Generate
+  </button>
+</div>
+
+            {busy ? 'Generating…' : 'Generate Copy'}
           </button>
 
           <button
