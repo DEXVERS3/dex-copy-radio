@@ -114,20 +114,21 @@ export default function Home() {
 
       <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center', flexWrap: 'nowrap' }}>
 
-          <button
-            type="button"
-            onClick={generate}
-            disabled={busy || !text.trim()}
-            style={{
-              background: busy || !text.trim() ? '#666' : '#ffffff',
-              color: '#000',
-              padding: '10px 14px',
-              borderRadius: 10,
-              border: 'none',
-              fontSize: 14,
-              cursor: busy || !text.trim() ? 'not-allowed' : 'pointer',
-            }}
-          >
+         <button
+  type="button"
+  onClick={generate}
+  disabled={busy}
+  style={{
+    background: busy ? '#666' : '#ffffff',
+    color: '#000',
+    padding: '10px 14px',
+    borderRadius: 10,
+    border: 'none',
+    fontSize: 14,
+    cursor: busy ? 'not-allowed' : 'pointer',
+  }}
+>
+
 <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
   <div style={{ display: 'flex', gap: 10 }}>
   {Object.entries(MODES).map(([k, v]) => {
