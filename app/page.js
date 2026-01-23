@@ -3,37 +3,41 @@
 import { useMemo, useState } from 'react';
 
 const MODES = {
-  "15": {
-    label: ":15",
-    hint: "Brand + offer + audience + tone + CTA + must-say (if any).",
+  '15': {
+    label: ':15',
+    hint: 'Brand + offer + audience + tone + CTA + must-say (if any).',
   },
-  "30": {
-    label: ":30",
-    hint: "Same as :15, plus one quick story beat or proof point.",
+  '30': {
+    label: ':30',
+    hint: 'Same as :15, plus one quick story beat or proof point.',
   },
-  "60": {
-    label: ":60",
-    hint: "Same as :30, plus a second beat + clearer benefit + cleaner close.",
+  '60': {
+    label: ':60',
+    hint: 'Same as :30, plus a second beat + clearer benefit + cleaner close.',
   },
 };
 
-
 export default function Home() {
-  const [mode, setMode] = useState("30");
+  const [mode, setMode] = useState('30');
   const [text, setText] = useState('');
   const [out, setOut] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const placeholder = useMemo(() => MODES[mode]?.hint ?? 'What do you want to say?', [mode]);
+  const placeholder = useMemo(
+    () => MODES[mode]?.hint ?? 'What do you want to say?',
+    [mode]
+  );
 
-  async function generate() {
+  async function generate(nextMode) {
+    const useMode = typeof nextMode === 'string' ? nextMode : mode;
+
     setBusy(true);
     setOut('');
     try {
       const r = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode }),
+        body: JSON.stringify({ text, mode: useMode }),
       });
 
       const j = await r.json().catch(() => ({}));
@@ -61,7 +65,8 @@ export default function Home() {
         background: '#0b0b0b',
         color: '#ffffff',
         padding: '42px 24px',
-        fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+        fontFamily:
+          'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
       }}
     >
       <div style={{ maxWidth: 960, margin: '0 auto', position: 'relative' }}>
@@ -85,14 +90,17 @@ export default function Home() {
           Control Room
         </button>
 
-        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>DEX RADIO</h1>
+        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>
+          DEX RADIO
+        </h1>
         <div style={{ marginTop: 6, color: '#b5b5b5', fontSize: 16 }}>
-          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio Copy.</span> On Demand.
+          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio copy.</span>{' '}
+          On demand.
         </div>
 
-       
-
-        <div style={{ marginTop: 18, fontSize: 12, color: '#b5b5b5' }}>Input</div>
+        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>
+          Input
+        </div>
         <textarea
           placeholder={placeholder}
           value={text}
@@ -112,64 +120,49 @@ export default function Home() {
           }}
         />
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center', flexWrap: 'nowrap' }}>
+        {/* Generation controls (duration = output constraint) */}
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            marginTop: 14,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          {Object.entries(MODES).map(([k, v]) => {
+            const active = mode === k;
 
-         <button
-  type="button"
-  onClick={generate}
-  disabled={busy}
-  style={{
-    background: busy ? '#666' : '#ffffff',
-    color: '#000',
-    padding: '10px 14px',
-    borderRadius: 10,
-    border: 'none',
-    fontSize: 14,
-    cursor: busy ? 'not-allowed' : 'pointer',
-  }}
->
-
-<div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-  <div style={{ display: 'flex', gap: 10 }}>
-  {Object.entries(MODES).map(([k, v]) => {
-    const active = mode === k;
-    return (
-      <button
-        key={k}
-        type="button"
-        onClick={() => setMode(k)}
-        style={{
-          background: active ? '#ffffff' : 'transparent',
-          color: active ? '#000' : '#fff',
-          border: active ? '1px solid #fff' : '1px solid #2a2a2a',
-          padding: '8px 12px',
-          borderRadius: 999,
-          fontSize: 13,
-          cursor: 'pointer',
-        }}
-      >
-        {v.label}
-      </button>
-    );
-  })}
-</div>
-
-
-  <button
-    type="button"
-    onClick={generate}
-    disabled={busy}
-  >
-    Generate
-  </button>
-</div>
-
-            {busy ? 'Generating…' : 'Generate Copy'}
-          </button>
+            return (
+              <button
+                key={k}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setMode(k);
+                  generate(k);
+                }}
+                style={{
+                  background: active ? '#ffffff' : 'transparent',
+                  color: active ? '#000' : '#fff',
+                  border: active ? '1px solid #fff' : '1px solid #2a2a2a',
+                  padding: '10px 14px',
+                  borderRadius: 999,
+                  fontSize: 14,
+                  cursor: busy ? 'not-allowed' : 'pointer',
+                  opacity: busy ? 0.6 : 1,
+                }}
+                title={busy ? 'Generating…' : `Generate a ${v.label} script`}
+              >
+                {busy && active ? 'Generating…' : v.label}
+              </button>
+            );
+          })}
 
           <button
             type="button"
             onClick={reset}
+            disabled={busy}
             style={{
               background: 'transparent',
               color: '#fff',
@@ -177,14 +170,17 @@ export default function Home() {
               borderRadius: 10,
               border: '1px solid #2a2a2a',
               fontSize: 14,
-              cursor: 'pointer',
+              cursor: busy ? 'not-allowed' : 'pointer',
+              opacity: busy ? 0.6 : 1,
             }}
           >
             Reset
           </button>
         </div>
 
-        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Output</div>
+        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>
+          Output
+        </div>
         <div
           style={{
             marginTop: 8,
@@ -212,7 +208,7 @@ export default function Home() {
             fontSize: 12,
           }}
         >
-          <span>Jim core online</span>
+          <span>Dex Radio online</span>
           <span />
         </div>
       </div>
