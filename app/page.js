@@ -128,7 +128,30 @@ export default function Home() {
             }}
           >
 <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-  // PASTE :15 / :30 / :60 BUTTON BLOCK HERE
+  <div style={{ display: 'flex', gap: 10 }}>
+  {Object.entries(MODES).map(([k, v]) => {
+    const active = mode === k;
+    return (
+      <button
+        key={k}
+        type="button"
+        onClick={() => setMode(k)}
+        style={{
+          background: active ? '#ffffff' : 'transparent',
+          color: active ? '#000' : '#fff',
+          border: active ? '1px solid #fff' : '1px solid #2a2a2a',
+          padding: '8px 12px',
+          borderRadius: 999,
+          fontSize: 13,
+          cursor: 'pointer',
+        }}
+      >
+        {v.label}
+      </button>
+    );
+  })}
+</div>
+
 
   <button
     type="button"
