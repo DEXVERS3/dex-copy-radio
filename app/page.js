@@ -87,7 +87,7 @@ export default function Home() {
 
         <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>DEX RADIO</h1>
         <div style={{ marginTop: 6, color: '#b5b5b5', fontSize: 16 }}>
-          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio Copy..</span> On Demand.
+          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio Copy.</span> On Demand.
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
