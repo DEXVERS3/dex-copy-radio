@@ -85,7 +85,7 @@ export default function Home() {
           Control Room
         </button>
 
-        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>DEX</h1>
+        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>DEX RADIO</h1>
         <div style={{ marginTop: 6, color: '#b5b5b5', fontSize: 16 }}>
           <span style={{ fontWeight: 600, color: '#eaeaea' }}>Your Voice.</span> On Demand.
         </div>
