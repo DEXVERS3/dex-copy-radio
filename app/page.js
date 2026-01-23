@@ -112,7 +112,7 @@ export default function Home() {
           }}
         />
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center', flexWrap: 'nowrap' }}>
 
           <button
             type="button"
