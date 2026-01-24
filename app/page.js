@@ -3,30 +3,26 @@
 import { useMemo, useState } from 'react';
 
 const MODES = {
-  '15': {
-    label: ':15',
-    hint: 'Brand + offer + audience + tone + CTA + must-say (if any).',
-  },
-  '30': {
-    label: ':30',
-    hint: 'Same as :15, plus one quick story beat or proof point.',
-  },
-  '60': {
-    label: ':60',
-    hint: 'Same as :30, plus a second beat + clearer benefit + cleaner close.',
-  },
+  '15': { label: ':15', hint: 'Tight. One hook + one benefit + CTA + must-say.' },
+  '30': { label: ':30', hint: 'Add one proof point or quick story beat.' },
+  '60': { label: ':60', hint: 'Two beats + clearer benefit + clean close.' },
 };
 
 export default function Home() {
   const [mode, setMode] = useState('30');
-  const [text, setText] = useState('');
-  const [out, setOut] = useState('');
   const [busy, setBusy] = useState(false);
+  const [out, setOut] = useState('');
 
-  const placeholder = useMemo(
-    () => MODES[mode]?.hint ?? 'What do you want to say?',
-    [mode]
-  );
+  // Intake fields
+  const [brand, setBrand] = useState('');
+  const [offer, setOffer] = useState('');
+  const [audience, setAudience] = useState('');
+  const [tone, setTone] = useState('confident, human, not salesy');
+  const [cta, setCta] = useState('');
+  const [mustSay, setMustSay] = useState('');
+  const [details, setDetails] = useState('');
+
+  const modeHint = useMemo(() => MODES[mode]?.hint ?? '', [mode]);
 
   async function generate(nextMode) {
     const useMode = typeof nextMode === 'string' ? nextMode : mode;
@@ -34,10 +30,24 @@ export default function Home() {
     setBusy(true);
     setOut('');
     try {
+      const payload = {
+        mode: useMode,
+        text: details, // keep compatibility with your current route.js
+        // also send structured fields for when we upgrade route.js next
+        brand,
+        offer,
+        audience,
+        tone,
+        cta,
+        mustSay,
+        details,
+        brief: { brand, offer, audience, tone, cta, mustSay, details },
+      };
+
       const r = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, mode: useMode }),
+        body: JSON.stringify(payload),
       });
 
       const j = await r.json().catch(() => ({}));
@@ -45,7 +55,7 @@ export default function Home() {
         setOut(j?.error ? `Error: ${j.error}` : `Error: ${r.status}`);
         return;
       }
-      setOut(j.output ?? 'Output could not be parsed.');
+      setOut(j.output ?? j.result ?? 'Output could not be parsed.');
     } catch (e) {
       setOut(`Error: ${String(e?.message || e)}`);
     } finally {
@@ -54,9 +64,29 @@ export default function Home() {
   }
 
   function reset() {
-    setText('');
+    setBrand('');
+    setOffer('');
+    setAudience('');
+    setTone('confident, human, not salesy');
+    setCta('');
+    setMustSay('');
+    setDetails('');
     setOut('');
   }
+
+  const inputStyle = {
+    width: '100%',
+    background: '#0f0f0f',
+    color: '#fff',
+    border: '1px solid #2a2a2a',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 14,
+    lineHeight: 1.4,
+    outline: 'none',
+  };
+
+  const labelStyle = { fontSize: 12, color: '#b5b5b5', marginTop: 14 };
 
   return (
     <main
@@ -65,8 +95,7 @@ export default function Home() {
         background: '#0b0b0b',
         color: '#ffffff',
         padding: '42px 24px',
-        fontFamily:
-          'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
+        fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
       }}
     >
       <div style={{ maxWidth: 960, margin: '0 auto', position: 'relative' }}>
@@ -90,49 +119,60 @@ export default function Home() {
           Control Room
         </button>
 
-        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>
-          DEX RADIO
-        </h1>
+        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>DEX RADIO</h1>
         <div style={{ marginTop: 6, color: '#b5b5b5', fontSize: 16 }}>
-          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio copy.</span>{' '}
-          On demand.
+          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio copy.</span> On demand.
         </div>
 
-        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>
-          Input
+        {/* Intake */}
+        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Intake</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Brand</div>
+            <input value={brand} onChange={(e) => setBrand(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Offer</div>
+            <input value={offer} onChange={(e) => setOffer(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Audience</div>
+            <input value={audience} onChange={(e) => setAudience(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Tone</div>
+            <input value={tone} onChange={(e) => setTone(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: '#b5b5b5' }}>CTA</div>
+            <input value={cta} onChange={(e) => setCta(e.target.value)} style={inputStyle} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Must-say (legal / required)</div>
+            <input value={mustSay} onChange={(e) => setMustSay(e.target.value)} style={inputStyle} />
+          </div>
         </div>
+
+        <div style={labelStyle}>Details (optional)</div>
         <textarea
-          placeholder={placeholder}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={9}
-          style={{
-            marginTop: 8,
-            width: '100%',
-            background: '#0f0f0f',
-            color: '#fff',
-            border: '1px solid #2a2a2a',
-            borderRadius: 10,
-            padding: 14,
-            fontSize: 14,
-            lineHeight: 1.5,
-            outline: 'none',
-          }}
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          rows={6}
+          placeholder="Any specifics: price, dates, location, qualifiers, phone, URL, station line, etc."
+          style={{ ...inputStyle, marginTop: 8 }}
         />
 
-        {/* Generation controls (duration = output constraint) */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 10,
-            marginTop: 14,
-            alignItems: 'center',
-            flexWrap: 'wrap',
-          }}
-        >
+        {/* Generate controls */}
+        <div style={{ marginTop: 14, fontSize: 12, color: '#b5b5b5' }}>Spot length</div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {Object.entries(MODES).map(([k, v]) => {
             const active = mode === k;
-
             return (
               <button
                 key={k}
@@ -176,11 +216,14 @@ export default function Home() {
           >
             Reset
           </button>
+
+          <div style={{ fontSize: 12, color: '#7a7a7a', marginLeft: 4 }}>
+            {modeHint}
+          </div>
         </div>
 
-        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>
-          Output
-        </div>
+        {/* Output */}
+        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Output</div>
         <div
           style={{
             marginTop: 8,
@@ -188,7 +231,7 @@ export default function Home() {
             border: '1px solid #2a2a2a',
             borderRadius: 10,
             padding: 14,
-            minHeight: 140,
+            minHeight: 160,
             fontSize: 14,
             lineHeight: 1.55,
             whiteSpace: 'pre-wrap',
