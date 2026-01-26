@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+// Force Node runtime so process.env works reliably
+export const runtime = "nodejs";
+
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
 // -------------------- DEX-RADIO NODE --------------------
@@ -31,29 +34,66 @@ A longer spot may NOT be derived by adding lines to a shorter one.
 
 REUSE BAN:
 - Cross-duration language reuse >20% is invalid.
+- If a :30 can be trimmed into a :15, or a :60 into a :30, regenerate.
 
-INFERENCE GATE:
+INFERENCE GATE (REQUIRED):
 Anything that explains what the audience already knows is illegal.
 
-VOICE:
-Peer. Minimal. Confident. Culturally fluent.
+OMISSION REQUIREMENT:
+Discard at least one plausible line/angle and replace it with inference or restraint.
 
-OUTPUT FORMAT:
-Finished radio script only.
+VOICE:
+Peer. Been there. Minimal. Confident. Culturally fluent.
+If a line could be replaced by “I know,” cut it.
+
+MUST-SAY ENFORCEMENT:
+- Must appear verbatim.
+- Land late enough to be heard.
+- No exceptions.
+
+OUTPUT FORMAT (ONLY THIS):
+Finished radio script only. No preamble. No notes. No alternatives.
 `;
+
+function pickDuration(body) {
+  const d = body?.duration ?? body?.seconds ?? body?.time ?? body?.mode ?? body?.len;
+  const n = Number(d);
+  if (n === 15 || n === 30 || n === 60) return n;
+  if (typeof d === "string") {
+    const m = d.match(/\b(15|30|60)\b/);
+    if (m) return Number(m[1]);
+  }
+  return 30;
+}
+
+function safeStr(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
 
 export async function POST(req) {
   try {
-    const body = await req.json();
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json(
+        { ok: false, error: "Missing OPENAI_API_KEY env var" },
+        { status: 500 }
+      );
+    }
 
-    const duration = body.duration || body.mode || 30;
-    const audience = body.audience || "";
-    const brand = body.brand || body.property || "";
-    const mustSay = body.mustSay || "NONE";
-    const details = body.details || "";
+    const body = await req.json().catch(() => ({}));
+    const duration = pickDuration(body);
 
-    const prompt = `
-${DEX_RADIO_NODE}
+    const brand = safeStr(body?.brand) || safeStr(body?.property) || "";
+    const audience = safeStr(body?.audience) || "";
+    const mustSay = safeStr(body?.mustSay) || "NONE";
+    const details =
+      safeStr(body?.details) ||
+      safeStr(body?.text) ||
+      safeStr(body?.input) ||
+      safeStr(body?.prompt) ||
+      "";
+
+    const prompt = `${DEX_RADIO_NODE}
 
 DURATION: :${duration}
 AUDIENCE: ${audience}
@@ -62,30 +102,36 @@ MUST-SAY: ${mustSay}
 DETAILS: ${details}
 `;
 
-    const response = await fetch(OPENAI_URL, {
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+    const r = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-5.2",
+        model,
         input: prompt,
       }),
     });
 
-    const data = await response.json();
+    const data = await r.json().catch(() => ({}));
+
+    if (!r.ok) {
+      return NextResponse.json(
+        { ok: false, error: data?.error?.message || "OpenAI request failed" },
+        { status: 500 }
+      );
+    }
 
     const output =
-      data.output_text ||
-      data.output?.[0]?.content?.[0]?.text ||
+      (typeof data.output_text === "string" && data.output_text) ||
+      data?.output?.[0]?.content?.[0]?.text ||
       "";
 
-    return NextResponse.json({
-      ok: true,
-      output: output.trim(),
-    });
-  } catch (err) {
+    return NextResponse.json({ ok: true, output: String(output).trim() });
+  } catch (_err) {
     return NextResponse.json(
       { ok: false, error: "DEX-RADIO generation failed" },
       { status: 500 }
