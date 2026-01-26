@@ -1,59 +1,12 @@
 import { NextResponse } from "next/server";
 
-// Force Node runtime so process.env works reliably
 export const runtime = "nodejs";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
-// -------------------- DEX-RADIO NODE --------------------
-const DEX_RADIO_NODE = `
-NODE: DEX-RADIO
-ROLE: You are Dex operating in RADIO mode. This node is creative and authoritative.
-
-MISSION:
-Produce finished, duration-true :15 / :30 / :60 radio spots at Mercury Award quality by
-compressing understanding, not padding words.
-
-INPUT LAW:
-- Intake is source-of-truth.
-- Must-say is mandatory and verbatim.
-- Shared audience knowledge is assumed.
-
-ANTI-ASSISTANT (HARD BAN):
-- No paraphrase of operator.
-- No explanation of intent.
-- No summaries.
-- No resizing copy.
-- Output starts with the script. Period.
-
-DURATION = STRUCTURE (NOT LENGTH):
-- :15 → 1 beat. Velocity + punch. One turn.
-- :30 → 2 beats. Recognition → authority.
-- :60 → Scene with escalation and belonging.
-A longer spot may NOT be derived by adding lines to a shorter one.
-
-REUSE BAN:
-- Cross-duration language reuse >20% is invalid.
-- If a :30 can be trimmed into a :15, or a :60 into a :30, regenerate.
-
-INFERENCE GATE (REQUIRED):
-Anything that explains what the audience already knows is illegal.
-
-OMISSION REQUIREMENT:
-Discard at least one plausible line/angle and replace it with inference or restraint.
-
-VOICE:
-Peer. Been there. Minimal. Confident. Culturally fluent.
-If a line could be replaced by “I know,” cut it.
-
-MUST-SAY ENFORCEMENT:
-- Must appear verbatim.
-- Land late enough to be heard.
-- No exceptions.
-
-OUTPUT FORMAT (ONLY THIS):
-Finished radio script only. No preamble. No notes. No alternatives.
-`;
+function s(v) {
+  return typeof v === "string" ? v.trim() : "";
+}
 
 function pickDuration(body) {
   const d = body?.duration ?? body?.seconds ?? body?.time ?? body?.mode ?? body?.len;
@@ -66,10 +19,73 @@ function pickDuration(body) {
   return 30;
 }
 
-function safeStr(v) {
-  return typeof v === "string" ? v.trim() : "";
+function getBrief(body) {
+  return body?.brief && typeof body.brief === "object" ? body.brief : {};
 }
 
+function pick(body, brief, ...keys) {
+  for (const k of keys) {
+    const v = s(body?.[k]) || s(brief?.[k]);
+    if (v) return v;
+  }
+  return "";
+}
+
+// -------------------- DEX-CORE (MINIMAL, NON-CREATIVE) --------------------
+const DEX_CORE = `
+YOU ARE DEX. EXECUTE. DO NOT PARAPHRASE THE OPERATOR. DO NOT RESTATE THE INTAKE.
+NO PREAMBLE. OUTPUT ONLY THE DELIVERABLE.
+`;
+
+// -------------------- DEX-RADIO NODE (SHARED) --------------------
+const DEX_RADIO_NODE_SHARED = `
+NODE: DEX-RADIO
+MISSION: Produce a finished, broadcast-ready radio spot at Mercury-level quality by compressing understanding, not padding words.
+
+HARD BANS:
+- No headers. No labels. No bullet points. No “:30 copy” titles.
+- No paraphrase of the intake.
+- No explanation of what you are doing.
+
+MUST-SAY:
+- If MUST-SAY is provided, it MUST appear verbatim.
+- It should land late enough to be heard.
+
+LOCATION:
+- If LOCATION is provided (even if it was stuffed into CTA), it MUST appear verbatim once.
+
+VOICE:
+Peer. Minimal. Confident. Culturally fluent.
+Recognition beats explanation. Silence is allowed.
+
+OUTPUT:
+Return ONLY the finished script. Nothing else.
+`;
+
+// -------------------- DURATION-SPECIFIC RULES (IF/THEN) --------------------
+function durationRules(duration) {
+  if (duration === 15) {
+    return `
+DURATION LOCK: :15 ONLY.
+STRUCTURE: 1 beat. Velocity + punch. One turn.
+LENGTH: ~35–55 words.
+`;
+  }
+  if (duration === 30) {
+    return `
+DURATION LOCK: :30 ONLY.
+STRUCTURE: 2 beats (recognition → authority/payoff).
+LENGTH: ~70–95 words.
+`;
+  }
+  return `
+DURATION LOCK: :60 ONLY.
+STRUCTURE: scene + escalation + belonging (arc).
+LENGTH: ~140–175 words.
+`;
+}
+
+// -------------------- ROUTE --------------------
 export async function POST(req) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
@@ -81,25 +97,39 @@ export async function POST(req) {
     }
 
     const body = await req.json().catch(() => ({}));
+    const brief = getBrief(body);
+
     const duration = pickDuration(body);
 
-    const brand = safeStr(body?.brand) || safeStr(body?.property) || "";
-    const audience = safeStr(body?.audience) || "";
-    const mustSay = safeStr(body?.mustSay) || "NONE";
-    const details =
-      safeStr(body?.details) ||
-      safeStr(body?.text) ||
-      safeStr(body?.input) ||
-      safeStr(body?.prompt) ||
-      "";
+    const brand = pick(body, brief, "brand", "property", "client", "sponsor");
+    const audience = pick(body, brief, "audience", "target", "listener", "listeners");
+    const offer = pick(body, brief, "offer", "deal", "promo", "promotion", "hook");
+    const cta = pick(body, brief, "cta", "callToAction");
 
-    const prompt = `${DEX_RADIO_NODE}
+    // LOCATION FIX:
+    // If you shoved location into CTA, we treat CTA as fallback LOCATION.
+    const location =
+      pick(body, brief, "location", "address", "where") || cta;
+
+    const mustSay =
+      pick(body, brief, "mustSay", "must_say", "legal", "required") || "NONE";
+
+    const details =
+      pick(body, brief, "details", "notes", "copyPoints", "points", "text", "input", "prompt");
+
+    const prompt = `
+${DEX_CORE}
+${DEX_RADIO_NODE_SHARED}
+${durationRules(duration)}
 
 DURATION: :${duration}
-AUDIENCE: ${audience}
-BRAND / PROPERTY: ${brand}
-MUST-SAY: ${mustSay}
-DETAILS: ${details}
+BRAND / PROPERTY: ${brand || "[MISSING BRAND]"}
+AUDIENCE: ${audience || "[MISSING AUDIENCE]"}
+OFFER: ${offer || "[NONE]"}
+LOCATION (VERBATIM): ${location || "[NONE]"}
+CTA: ${cta || "[NONE]"}
+MUST-SAY (VERBATIM): ${mustSay}
+COPY POINTS / DETAILS: ${details || "[NONE]"}
 `;
 
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -130,8 +160,18 @@ DETAILS: ${details}
       data?.output?.[0]?.content?.[0]?.text ||
       "";
 
-    return NextResponse.json({ ok: true, output: String(output).trim() });
-  } catch (_err) {
+    const finalText = String(output || "").trim();
+
+    // Fail loudly if we somehow got nothing (prevents “echo intake” UIs from pretending success)
+    if (!finalText) {
+      return NextResponse.json(
+        { ok: false, error: "Empty model output" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ ok: true, output: finalText });
+  } catch {
     return NextResponse.json(
       { ok: false, error: "DEX-RADIO generation failed" },
       { status: 500 }
