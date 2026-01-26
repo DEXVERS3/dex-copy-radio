@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const OPENAI_URL = "https://api.openai.com/v1/responses";
 
 // -------------------- DEX-RADIO NODE --------------------
 const DEX_RADIO_NODE = `
@@ -34,48 +31,26 @@ A longer spot may NOT be derived by adding lines to a shorter one.
 
 REUSE BAN:
 - Cross-duration language reuse >20% is invalid.
-- If a :30 can be trimmed into a :15, or a :60 into a :30, regenerate.
 
-INFERENCE GATE (REQUIRED):
-Before writing, silently infer:
-- what the audience already knows
-- what would insult them if explained
-- what can be implied with silence
-Any line that explains inferred knowledge is illegal.
-
-OMISSION REQUIREMENT:
-- Actively discard at least one plausible line or angle.
-- Replace it with inference or restraint.
+INFERENCE GATE:
+Anything that explains what the audience already knows is illegal.
 
 VOICE:
-Peer. Been there. Minimal. Confident. Culturally fluent.
-If a line could be replaced by “I know,” cut it.
+Peer. Minimal. Confident. Culturally fluent.
 
-MUST-SAY ENFORCEMENT:
-- Must appear verbatim.
-- Land late enough to be heard.
-- No exceptions.
-
-OUTPUT FORMAT (ONLY THIS):
-- Finished radio script for the requested duration.
-- No preamble. No notes. No alternatives.
+OUTPUT FORMAT:
+Finished radio script only.
 `;
 
-// -------------------- ROUTE --------------------
 export async function POST(req) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const body = await req.json();
 
-    const duration =
-      Number(body.duration) ||
-      Number(body.seconds) ||
-      Number(body.mode) ||
-      30;
-
+    const duration = body.duration || body.mode || 30;
     const audience = body.audience || "";
     const brand = body.brand || body.property || "";
     const mustSay = body.mustSay || "NONE";
-    const details = body.details || body.text || "";
+    const details = body.details || "";
 
     const prompt = `
 ${DEX_RADIO_NODE}
@@ -87,14 +62,23 @@ MUST-SAY: ${mustSay}
 DETAILS: ${details}
 `;
 
-    const response = await client.responses.create({
-      model: "gpt-5.2",
-      input: prompt,
+    const response = await fetch(OPENAI_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-5.2",
+        input: prompt,
+      }),
     });
 
+    const data = await response.json();
+
     const output =
-      response.output_text ||
-      response.output?.[0]?.content?.[0]?.text ||
+      data.output_text ||
+      data.output?.[0]?.content?.[0]?.text ||
       "";
 
     return NextResponse.json({
