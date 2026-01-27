@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-
-const VERSION = "[[DEX_DEMO_MODE_V1_FREE]]";
+const VERSION = "[[DEX_DEMO_MODE_V2_CLEAN]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -19,84 +18,100 @@ function pickDuration(body) {
   return 30;
 }
 
-function pick(arr, idx) {
-  return arr[Math.abs(idx) % arr.length];
-}
-
-function linesToBullets(text) {
+function lines(text) {
   return s(text)
     .split(/\n+/)
     .map((x) => x.trim())
     .filter(Boolean);
 }
 
-function buildPromptBits({ brand, offer, cta, mustSay, details }) {
-  const detailBits = linesToBullets(details);
-  // If user gives sparse details, we still generate angles
-  const extras =
-    detailBits.length > 0
-      ? detailBits
-      : [
-          "Walk in, get it done, keep moving.",
-          "No appointment drama.",
-          "Fast, clean, and straightforward.",
-        ];
-
-  return { detailBits: extras, mustSay: s(mustSay), brand, offer, cta };
+function pick(arr, seed) {
+  return arr[Math.abs(seed) % arr.length];
 }
 
-function ensureMustSay(script, mustSay) {
+function stripLabelsEverywhere(text) {
+  // Remove ANY label-like lines and inline "LABEL: ..."
+  const raw = (text || "").split("\n");
+  const out = [];
+  for (let line of raw) {
+    // drop whole line if it begins with a label
+    if (/^\s*(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS)\s*:/i.test(line)) continue;
+
+    // remove inline labels like "OFFER: xyz"
+    line = line.replace(/\b(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS)\s*:\s*/gi, "");
+
+    // collapse extra spaces
+    line = line.replace(/\s{2,}/g, " ").trim();
+    if (line) out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function ensureMustSayFinalLine(script, mustSay) {
   const ms = s(mustSay);
   if (!ms) return script.trim();
-  // Put must-say as final line exactly once.
+
+  // remove any existing occurrences (case-insensitive)
   const esc = ms.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(esc, "gi");
-  let out = script.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+  let out = (script || "").replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+
+  // must-say as FINAL line, verbatim
   return `${out}\n${ms}`.trim();
 }
 
-function make15({ brand, offer, cta, detailBits }) {
-  // One beat, punch + CTA
+function buildDetailBits(details) {
+  const bits = lines(details);
+  return bits.length
+    ? bits
+    : [
+        "Walk in, get it done, keep moving.",
+        "No appointment drama.",
+        "Fast, clean, and straightforward.",
+      ];
+}
+
+function make15({ brand, offer, cta, detailBits, seed }) {
   const hook = pick(
     [
-      `You don’t have time for the “all day” oil change.`,
-      `If your oil change takes longer than your coffee, something’s wrong.`,
-      `Busy day? Good. Don’t waste it on an oil change.`,
+      "If your oil change takes longer than your coffee, something’s wrong.",
+      "Busy day? Good. Don’t waste it on an oil change.",
+      "You’ve got ten minutes. That’s enough to handle this.",
     ],
-    brand.length + offer.length
+    seed
   );
 
   const punch = pick(
     [
-      `${brand} gets you in and out — ${offer}.`,
       `${brand}. ${offer}. In. Out. Done.`,
       `${offer}. That’s the whole point. That’s ${brand}.`,
+      `${brand} gets you back on the road — ${offer}.`,
     ],
-    offer.length
+    seed + 3
   );
+
+  const detail = pick(detailBits, seed + 7);
 
   const close = pick(
     [
-      `${cta || `Swing by ${brand} today`}.`,
-      `${cta || `Stop at ${brand} and keep moving`}.`,
-      `${cta || `Head to ${brand} — today`}.`,
+      `${cta || `Visit ${brand} today`}.`,
+      `${cta || `Stop by ${brand} today`}.`,
+      `${cta || `Head to ${brand} today`}.`,
     ],
-    (cta || "").length + 3
+    seed + 11
   );
 
-  const detail = pick(detailBits, 1);
   return [hook, punch, detail, close].join("\n");
 }
 
-function make30({ brand, offer, cta, detailBits }) {
-  // Two beats: recognition → payoff/authority
+function make30({ brand, offer, cta, detailBits, seed }) {
   const beat1 = pick(
     [
-      `You know that feeling when you realize your oil’s overdue… and you immediately regret it?`,
-      `Your car doesn’t need a “someday.” It needs an oil change.`,
-      `If you’ve been putting it off, this is the painless fix.`,
+      "You know that moment you realize your oil’s overdue… and you immediately regret it?",
+      "If you’ve been putting it off, this is the painless fix.",
+      "Your car doesn’t need a “someday.” It needs an oil change.",
     ],
-    brand.length
+    seed
   );
 
   const beat2 = pick(
@@ -105,41 +120,40 @@ function make30({ brand, offer, cta, detailBits }) {
       `At ${brand}, it’s quick, clean, and done: ${offer}.`,
       `${offer}. That’s what ${brand} is built for.`,
     ],
-    offer.length + 2
+    seed + 2
   );
 
   const proof = pick(
     [
-      `No long wait. No weird upsell energy. Just get it handled.`,
-      `You’re not there to hang out — you’re there to get back to your life.`,
-      `It’s the fastest check-off on your whole list today.`,
+      "No long wait. No weird upsell energy. Just get it handled.",
+      "You’re not there to hang out — you’re there to get back to your life.",
+      "This is the fastest check-off on your list today.",
     ],
-    detailBits.join("").length
+    seed + 5
   );
 
-  const detail = pick(detailBits, 2);
+  const detail = pick(detailBits, seed + 9);
 
   const close = pick(
     [
       `${cta || `Get to ${brand} today`}.`,
-      `${cta || `Visit ${brand} and knock it out`}.`,
-      `${cta || `Stop by ${brand} — today`}.`,
+      `${cta || `Visit ${brand} today`}.`,
+      `${cta || `Stop by ${brand} today`}.`,
     ],
-    (cta || "").length + 7
+    seed + 12
   );
 
   return [beat1, beat2, proof, detail, close].join("\n");
 }
 
-function make60({ brand, offer, cta, detailBits }) {
-  // Scene → escalation → belonging
+function make60({ brand, offer, cta, detailBits, seed }) {
   const scene = pick(
     [
-      `Picture your day for a second. You’re already behind, your phone’s blowing up, and your car’s reminding you the oil change is overdue.`,
-      `It’s one of those days. Meetings, errands, and your car hits you with the little reminder you’ve been avoiding.`,
-      `You’ve got places to be, and the last thing you need is a half-day oil change saga.`,
+      "Picture your day for a second. You’re already behind, your phone’s blowing up, and your car reminds you the oil change is overdue.",
+      "It’s one of those days — errands, meetings, and your car hits you with the reminder you’ve been avoiding.",
+      "You’ve got places to be, and the last thing you need is a half-day oil change saga.",
     ],
-    brand.length + 10
+    seed
   );
 
   const escalation = pick(
@@ -148,31 +162,31 @@ function make60({ brand, offer, cta, detailBits }) {
       `Don’t turn it into a project. Go to ${brand}. ${offer}.`,
       `${offer}. That’s why people hit ${brand} when they’re not trying to waste a day.`,
     ],
-    offer.length + 11
+    seed + 3
   );
 
   const belonging = pick(
     [
-      `This is the spot for people who want it done right — and done fast.`,
-      `It’s for people who don’t need the speech. Just the fix.`,
-      `You’ll feel it: quick in, quick out, back to your life.`,
+      "This is the spot for people who want it done right — and done fast.",
+      "It’s for people who don’t need the speech. Just the fix.",
+      "Quick in, quick out, back to your life.",
     ],
-    detailBits.join("|").length + 5
+    seed + 7
   );
 
-  const detailA = pick(detailBits, 3);
-  const detailB = pick(detailBits, 4);
+  const a = pick(detailBits, seed + 10);
+  const b = pick(detailBits, seed + 13);
 
   const close = pick(
     [
       `${cta || `Head to ${brand} today`}.`,
-      `${cta || `Visit ${brand} — today`}.`,
-      `${cta || `Stop by ${brand} and keep moving`}.`,
+      `${cta || `Visit ${brand} today`}.`,
+      `${cta || `Stop by ${brand} today`}.`,
     ],
-    (cta || "").length + 13
+    seed + 16
   );
 
-  return [scene, escalation, belonging, detailA, detailB, close].join("\n");
+  return [scene, escalation, belonging, a, b, close].join("\n");
 }
 
 export async function POST(req) {
@@ -186,14 +200,25 @@ export async function POST(req) {
     const mustSay = s(body.mustSay);
     const details = s(body.details || body.text);
 
-    const bits = buildPromptBits({ brand, offer, cta, mustSay, details });
+    const detailBits = buildDetailBits(details);
 
-    let script = "";
-    if (duration === 15) script = make15({ ...bits, brand, offer, cta });
-    if (duration === 30) script = make30({ ...bits, brand, offer, cta });
-    if (duration === 60) script = make60({ ...bits, brand, offer, cta });
+    // stable seed so same intake -> consistent output per duration, but different across durations
+    const seedBase =
+      (brand.length * 7) +
+      (offer.length * 11) +
+      (cta.length * 13) +
+      (details.length * 17) +
+      (mustSay.length * 19);
 
-    script = ensureMustSay(script, mustSay);
+    let script =
+      duration === 15
+        ? make15({ brand, offer, cta, detailBits, seed: seedBase + 15 })
+        : duration === 30
+        ? make30({ brand, offer, cta, detailBits, seed: seedBase + 30 })
+        : make60({ brand, offer, cta, detailBits, seed: seedBase + 60 });
+
+    script = stripLabelsEverywhere(script);
+    script = ensureMustSayFinalLine(script, mustSay);
 
     return NextResponse.json({
       ok: true,
