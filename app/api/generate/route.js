@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 export const runtime = "nodejs";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
+const VERSION_STAMP = "[[DEX_API_GENERATE_V2_LOCKED]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -19,17 +20,13 @@ function pickDuration(body) {
   return 30;
 }
 
-function looksLikeEcho(text) {
-  const u = (text || "").toUpperCase();
-  return (
-    u.includes("DEX RADIO") ||
-    u.includes("NO INPUT RECEIVED") ||
-    u.includes("BRAND:") ||
-    u.includes("OFFER:") ||
-    u.includes("CTA:") ||
-    u.includes("MUST-SAY:") ||
-    u.includes("DETAILS:")
-  );
+function stripLabelLines(text) {
+  return (text || "")
+    .split("\n")
+    .filter((line) => !/^\s*(DEX RADIO|BRAND|OFFER|CTA|MUST-SAY|DETAILS)\s*:/i.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function callOpenAI(apiKey, prompt) {
@@ -59,20 +56,17 @@ async function callOpenAI(apiKey, prompt) {
   return { ok: true, output: s(out) };
 }
 
-function durationRules(duration) {
-  if (duration === 15) return "One beat. Fast. Punchy. ~40 words.";
-  if (duration === 30) return "Two beats. Recognition then payoff. ~80 words.";
-  return "Scene, escalation, belonging. ~160 words.";
+function durationRule(duration) {
+  if (duration === 15) return "One beat. Punchy. ~35–55 words.";
+  if (duration === 30) return "Two beats: recognition → payoff. ~70–95 words.";
+  return "Scene → escalation → belonging. ~140–175 words.";
 }
 
 export async function POST(req) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { ok: false, error: "Missing OPENAI_API_KEY" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY" }, { status: 500 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -82,54 +76,56 @@ export async function POST(req) {
     const offer = s(body.offer);
     const cta = s(body.cta);
     const mustSay = s(body.mustSay);
-    const details = s(body.details || body.text || "");
+    const details = s(body.details || body.text);
 
     const prompt = `
 Write a ${duration}-second radio commercial.
 
-RULES:
-- Spoken sentences only.
-- No labels, headings, or echoing input.
-- Structure must change by duration.
+HARD RULES:
+- Return ONLY spoken sentences.
+- No headings. No labels. No bullets.
+- Do not echo inputs back.
 
-INGREDIENTS:
-Brand: ${brand}
-Offer: ${offer}
-Details: ${details}
-CTA context: ${cta}
+Use these ingredients (do NOT print as labels):
+Brand: ${brand || "[BRAND]"}
+Offer: ${offer || "[OFFER]"}
+Details: ${details || "[NONE]"}
+CTA context/location: ${cta || "[CTA]"}
 
-MUST-SAY (verbatim, ONCE, final line):
-"${mustSay}"
+MUST-SAY: Include this line verbatim ONCE, as the FINAL line:
+"${mustSay || "NONE"}"
 
-${durationRules(duration)}
+${durationRule(duration)}
 
 Return ONLY the finished script.
 `;
 
+    // Call #1
     let res = await callOpenAI(apiKey, prompt);
+    if (!res.ok) return NextResponse.json({ ok: false, error: res.error }, { status: 500 });
 
-    if (!res.ok || !res.output || looksLikeEcho(res.output)) {
-      res = await callOpenAI(
+    // Clean labels if model outputs them
+    let cleaned = stripLabelLines(res.output);
+
+    // Retry once if it still looks like intake / too short
+    if (!cleaned || cleaned.split(/\s+/).length < 20) {
+      const retry = await callOpenAI(
         apiKey,
-        `Rewrite correctly. No labels. No echo.\n\n${prompt}`
+        `INVALID: You echoed intake or output labels. Regenerate correctly.\n\n${prompt}`
       );
+      if (retry.ok) cleaned = stripLabelLines(retry.output);
     }
 
-    if (!res.ok || !res.output || looksLikeEcho(res.output)) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid model output" },
-        { status: 500 }
-      );
+    if (!cleaned || cleaned.split(/\s+/).length < 20) {
+      return NextResponse.json({ ok: false, error: "Invalid output" }, { status: 500 });
     }
 
+    // Visible stamp proves you're hitting THIS route
     return NextResponse.json({
       ok: true,
-      output: res.output,
+      output: `${VERSION_STAMP}\n${cleaned}`,
     });
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   }
 }
