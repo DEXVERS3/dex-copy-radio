@@ -12,6 +12,7 @@ export default function Home() {
   const [mode, setMode] = useState('30');
   const [busy, setBusy] = useState(false);
   const [out, setOut] = useState('');
+  const [version, setVersion] = useState('');
 
   // Intake fields
   const [brand, setBrand] = useState('');
@@ -29,6 +30,7 @@ export default function Home() {
 
     setBusy(true);
     setOut('');
+    setVersion('');
     try {
       // EQUATION TEXT: 1 + 2 + 5 + 6 + 7
       const equationText = [
@@ -43,12 +45,7 @@ export default function Home() {
 
       const payload = {
         mode: useMode,
-
-        // IMPORTANT: text is no longer ONLY Box 7.
-        // It now carries the vital info bundle.
         text: equationText,
-
-        // structured fields still sent
         brand,
         offer,
         audience,
@@ -67,10 +64,15 @@ export default function Home() {
       });
 
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
+
+      // show backend version so we KNOW what code is live
+      setVersion(j?.meta?.version ? String(j.meta.version) : '');
+
+      if (!r.ok || j?.ok === false) {
         setOut(j?.error ? `Error: ${j.error}` : `Error: ${r.status}`);
         return;
       }
+
       setOut(j.output ?? j.result ?? 'Output could not be parsed.');
     } catch (e) {
       setOut(`Error: ${String(e?.message || e)}`);
@@ -88,6 +90,7 @@ export default function Home() {
     setMustSay('');
     setDetails('');
     setOut('');
+    setVersion('');
   }
 
   const inputStyle = {
@@ -252,6 +255,10 @@ export default function Home() {
           }}
         >
           {out || 'Output will appear here'}
+        </div>
+
+        <div style={{ marginTop: 8, fontSize: 12, color: '#7a7a7a' }}>
+          {version ? `API version: ${version}` : ''}
         </div>
       </div>
     </main>
