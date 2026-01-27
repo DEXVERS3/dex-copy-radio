@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const OPENAI_URL = "https://api.openai.com/v1/responses";
-const VERSION_STAMP = "[[DEX_API_GENERATE_V2_LOCKED]]";
+const VERSION = "[[DEX_DEMO_MODE_V1_FREE]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -20,110 +19,186 @@ function pickDuration(body) {
   return 30;
 }
 
-function stripLabelLines(text) {
-  return (text || "")
-    .split("\n")
-    .filter((line) => !/^\s*(DEX RADIO|BRAND|OFFER|CTA|MUST-SAY|DETAILS)\s*:/i.test(line))
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+function pick(arr, idx) {
+  return arr[Math.abs(idx) % arr.length];
 }
 
-async function callOpenAI(apiKey, prompt) {
-  const r = await fetch(OPENAI_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-      input: prompt,
-    }),
-  });
-
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = j?.error?.message || "OpenAI request failed";
-    return { ok: false, error: msg };
-  }
-
-  const out =
-    (typeof j.output_text === "string" && j.output_text) ||
-    j?.output?.[0]?.content?.[0]?.text ||
-    "";
-
-  return { ok: true, output: s(out) };
+function linesToBullets(text) {
+  return s(text)
+    .split(/\n+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 }
 
-function durationRule(duration) {
-  if (duration === 15) return "One beat. Punchy. ~35–55 words.";
-  if (duration === 30) return "Two beats: recognition → payoff. ~70–95 words.";
-  return "Scene → escalation → belonging. ~140–175 words.";
+function buildPromptBits({ brand, offer, cta, mustSay, details }) {
+  const detailBits = linesToBullets(details);
+  // If user gives sparse details, we still generate angles
+  const extras =
+    detailBits.length > 0
+      ? detailBits
+      : [
+          "Walk in, get it done, keep moving.",
+          "No appointment drama.",
+          "Fast, clean, and straightforward.",
+        ];
+
+  return { detailBits: extras, mustSay: s(mustSay), brand, offer, cta };
+}
+
+function ensureMustSay(script, mustSay) {
+  const ms = s(mustSay);
+  if (!ms) return script.trim();
+  // Put must-say as final line exactly once.
+  const esc = ms.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(esc, "gi");
+  let out = script.replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
+  return `${out}\n${ms}`.trim();
+}
+
+function make15({ brand, offer, cta, detailBits }) {
+  // One beat, punch + CTA
+  const hook = pick(
+    [
+      `You don’t have time for the “all day” oil change.`,
+      `If your oil change takes longer than your coffee, something’s wrong.`,
+      `Busy day? Good. Don’t waste it on an oil change.`,
+    ],
+    brand.length + offer.length
+  );
+
+  const punch = pick(
+    [
+      `${brand} gets you in and out — ${offer}.`,
+      `${brand}. ${offer}. In. Out. Done.`,
+      `${offer}. That’s the whole point. That’s ${brand}.`,
+    ],
+    offer.length
+  );
+
+  const close = pick(
+    [
+      `${cta || `Swing by ${brand} today`}.`,
+      `${cta || `Stop at ${brand} and keep moving`}.`,
+      `${cta || `Head to ${brand} — today`}.`,
+    ],
+    (cta || "").length + 3
+  );
+
+  const detail = pick(detailBits, 1);
+  return [hook, punch, detail, close].join("\n");
+}
+
+function make30({ brand, offer, cta, detailBits }) {
+  // Two beats: recognition → payoff/authority
+  const beat1 = pick(
+    [
+      `You know that feeling when you realize your oil’s overdue… and you immediately regret it?`,
+      `Your car doesn’t need a “someday.” It needs an oil change.`,
+      `If you’ve been putting it off, this is the painless fix.`,
+    ],
+    brand.length
+  );
+
+  const beat2 = pick(
+    [
+      `${brand} makes it simple: ${offer}.`,
+      `At ${brand}, it’s quick, clean, and done: ${offer}.`,
+      `${offer}. That’s what ${brand} is built for.`,
+    ],
+    offer.length + 2
+  );
+
+  const proof = pick(
+    [
+      `No long wait. No weird upsell energy. Just get it handled.`,
+      `You’re not there to hang out — you’re there to get back to your life.`,
+      `It’s the fastest check-off on your whole list today.`,
+    ],
+    detailBits.join("").length
+  );
+
+  const detail = pick(detailBits, 2);
+
+  const close = pick(
+    [
+      `${cta || `Get to ${brand} today`}.`,
+      `${cta || `Visit ${brand} and knock it out`}.`,
+      `${cta || `Stop by ${brand} — today`}.`,
+    ],
+    (cta || "").length + 7
+  );
+
+  return [beat1, beat2, proof, detail, close].join("\n");
+}
+
+function make60({ brand, offer, cta, detailBits }) {
+  // Scene → escalation → belonging
+  const scene = pick(
+    [
+      `Picture your day for a second. You’re already behind, your phone’s blowing up, and your car’s reminding you the oil change is overdue.`,
+      `It’s one of those days. Meetings, errands, and your car hits you with the little reminder you’ve been avoiding.`,
+      `You’ve got places to be, and the last thing you need is a half-day oil change saga.`,
+    ],
+    brand.length + 10
+  );
+
+  const escalation = pick(
+    [
+      `Here’s the move: ${brand}. ${offer}.`,
+      `Don’t turn it into a project. Go to ${brand}. ${offer}.`,
+      `${offer}. That’s why people hit ${brand} when they’re not trying to waste a day.`,
+    ],
+    offer.length + 11
+  );
+
+  const belonging = pick(
+    [
+      `This is the spot for people who want it done right — and done fast.`,
+      `It’s for people who don’t need the speech. Just the fix.`,
+      `You’ll feel it: quick in, quick out, back to your life.`,
+    ],
+    detailBits.join("|").length + 5
+  );
+
+  const detailA = pick(detailBits, 3);
+  const detailB = pick(detailBits, 4);
+
+  const close = pick(
+    [
+      `${cta || `Head to ${brand} today`}.`,
+      `${cta || `Visit ${brand} — today`}.`,
+      `${cta || `Stop by ${brand} and keep moving`}.`,
+    ],
+    (cta || "").length + 13
+  );
+
+  return [scene, escalation, belonging, detailA, detailB, close].join("\n");
 }
 
 export async function POST(req) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY" }, { status: 500 });
-    }
-
     const body = await req.json().catch(() => ({}));
     const duration = pickDuration(body);
 
-    const brand = s(body.brand);
-    const offer = s(body.offer);
+    const brand = s(body.brand) || "YOUR BRAND";
+    const offer = s(body.offer) || "YOUR OFFER";
     const cta = s(body.cta);
     const mustSay = s(body.mustSay);
     const details = s(body.details || body.text);
 
-    const prompt = `
-Write a ${duration}-second radio commercial.
+    const bits = buildPromptBits({ brand, offer, cta, mustSay, details });
 
-HARD RULES:
-- Return ONLY spoken sentences.
-- No headings. No labels. No bullets.
-- Do not echo inputs back.
+    let script = "";
+    if (duration === 15) script = make15({ ...bits, brand, offer, cta });
+    if (duration === 30) script = make30({ ...bits, brand, offer, cta });
+    if (duration === 60) script = make60({ ...bits, brand, offer, cta });
 
-Use these ingredients (do NOT print as labels):
-Brand: ${brand || "[BRAND]"}
-Offer: ${offer || "[OFFER]"}
-Details: ${details || "[NONE]"}
-CTA context/location: ${cta || "[CTA]"}
+    script = ensureMustSay(script, mustSay);
 
-MUST-SAY: Include this line verbatim ONCE, as the FINAL line:
-"${mustSay || "NONE"}"
-
-${durationRule(duration)}
-
-Return ONLY the finished script.
-`;
-
-    // Call #1
-    let res = await callOpenAI(apiKey, prompt);
-    if (!res.ok) return NextResponse.json({ ok: false, error: res.error }, { status: 500 });
-
-    // Clean labels if model outputs them
-    let cleaned = stripLabelLines(res.output);
-
-    // Retry once if it still looks like intake / too short
-    if (!cleaned || cleaned.split(/\s+/).length < 20) {
-      const retry = await callOpenAI(
-        apiKey,
-        `INVALID: You echoed intake or output labels. Regenerate correctly.\n\n${prompt}`
-      );
-      if (retry.ok) cleaned = stripLabelLines(retry.output);
-    }
-
-    if (!cleaned || cleaned.split(/\s+/).length < 20) {
-      return NextResponse.json({ ok: false, error: "Invalid output" }, { status: 500 });
-    }
-
-    // Visible stamp proves you're hitting THIS route
     return NextResponse.json({
       ok: true,
-      output: `${VERSION_STAMP}\n${cleaned}`,
+      output: `${VERSION}\n${script}`.trim(),
+      meta: { duration, version: VERSION },
     });
   } catch {
     return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
