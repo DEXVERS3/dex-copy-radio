@@ -30,10 +30,25 @@ export default function Home() {
     setBusy(true);
     setOut('');
     try {
+      // EQUATION TEXT: 1 + 2 + 5 + 6 + 7
+      const equationText = [
+        brand && `BRAND: ${brand}`,
+        offer && `OFFER: ${offer}`,
+        cta && `CTA: ${cta}`,
+        mustSay && `MUST-SAY: ${mustSay}`,
+        details && `DETAILS: ${details}`,
+      ]
+        .filter(Boolean)
+        .join('\n');
+
       const payload = {
         mode: useMode,
-        text: details, // keep compatibility with your current route.js
-        // also send structured fields for when we upgrade route.js next
+
+        // IMPORTANT: text is no longer ONLY Box 7.
+        // It now carries the vital info bundle.
+        text: equationText,
+
+        // structured fields still sent
         brand,
         offer,
         audience,
@@ -48,6 +63,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        cache: 'no-store',
       });
 
       const j = await r.json().catch(() => ({}));
@@ -124,7 +140,6 @@ export default function Home() {
           <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio copy.</span> On demand.
         </div>
 
-        {/* Intake */}
         <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Intake</div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
@@ -168,7 +183,6 @@ export default function Home() {
           style={{ ...inputStyle, marginTop: 8 }}
         />
 
-        {/* Generate controls */}
         <div style={{ marginTop: 14, fontSize: 12, color: '#b5b5b5' }}>Spot length</div>
         <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {Object.entries(MODES).map(([k, v]) => {
@@ -222,7 +236,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Output */}
         <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Output</div>
         <div
           style={{
@@ -239,20 +252,6 @@ export default function Home() {
           }}
         >
           {out || 'Output will appear here'}
-        </div>
-
-        <div
-          style={{
-            marginTop: 18,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            color: '#7a7a7a',
-            fontSize: 12,
-          }}
-        >
-          <span>Dex Radio online</span>
-          <span />
         </div>
       </div>
     </main>
