@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 const OPENAI_URL = "https://api.openai.com/v1/responses";
-const VERSION = "DEX_RADIO_ROUTE_V5_MODEL_DURATION_LOCK";
+const VERSION = "DEX_RADIO_ROUTE_V6_REJECT_LABEL_ECHO_DEDUP_MUSTSAY";
 
 function s(v) { return typeof v === "string" ? v.trim() : ""; }
 function getBrief(body) { return body?.brief && typeof body.brief === "object" ? body.brief : {}; }
@@ -27,28 +27,31 @@ function pickDuration(body) {
 }
 
 function durationSpec(duration) {
-  if (duration === 15) {
-    return `
-DURATION LOCK: :15 ONLY.
-SHAPE: 1 beat. Velocity + punch. One turn.
-REQUIRED: One clean move + close.
-FORBIDDEN: development, lists, headers.
-`;
-  }
-  if (duration === 30) {
-    return `
-DURATION LOCK: :30 ONLY.
-SHAPE: 2 beats (recognition/contrast → payoff/authority + close).
-REQUIRED: Development. Must feel built, not shortened.
-FORBIDDEN: lists, headers, “copy points”.
-`;
-  }
-  return `
-DURATION LOCK: :60 ONLY.
-SHAPE: scene → escalation → belonging.
-REQUIRED: A real scene + escalation.
-FORBIDDEN: padding, lists, headers.
-`;
+  if (duration === 15) return "DURATION LOCK: :15 ONLY. 1 beat. ~35–55 words. One turn.";
+  if (duration === 30) return "DURATION LOCK: :30 ONLY. 2 beats (recognition → payoff). ~70–95 words.";
+  return "DURATION LOCK: :60 ONLY. Scene → escalation → belonging. ~140–175 words.";
+}
+
+function looksLikeLabelEcho(out) {
+  const t = s(out);
+  if (!t) return true;
+  const upper = t.toUpperCase();
+
+  // If it contains the intake labels, it's invalid output
+  const labelHits =
+    upper.includes("DEX RADIO") ||
+    upper.includes("BRAND:") ||
+    upper.includes("OFFER:") ||
+    upper.includes("CTA:") ||
+    upper.includes("MUST-SAY:") ||
+    upper.includes("DETAILS:");
+
+  // Also reject if it looks like just a few short lines with no sentence punctuation
+  const hasPunct = /[.!?]/.test(t);
+  const lines = t.split("\n").map(x => x.trim()).filter(Boolean);
+  const looksListy = lines.length <= 8 && !hasPunct;
+
+  return labelHits || looksListy;
 }
 
 function includesVerbatim(out, phrase) {
@@ -58,13 +61,31 @@ function includesVerbatim(out, phrase) {
   return o.includes(p.toLowerCase());
 }
 
+function dedupeMustSay(out, mustSay) {
+  const ms = s(mustSay);
+  if (!ms || ms === "NONE" || ms === "[NONE]") return s(out);
+
+  // Remove repeated occurrences, then append once at end.
+  let text = s(out);
+  const pattern = new RegExp(ms.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  text = text.replace(pattern, "").replace(/\n{3,}/g, "\n\n").trim();
+
+  // Append must-say at end
+  if (!text.toLowerCase().includes(ms.toLowerCase())) {
+    text = `${text}\n${ms}`.trim();
+  } else {
+    // if it still exists once, keep it; but ensure it lands late:
+    // move it to the end by removing first and appending
+    text = text.replace(pattern, "").replace(/\n{3,}/g, "\n\n").trim();
+    text = `${text}\n${ms}`.trim();
+  }
+  return text;
+}
+
 async function callOpenAI({ apiKey, model, prompt }) {
   const r = await fetch(OPENAI_URL, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({ model, input: prompt }),
   });
 
@@ -81,35 +102,33 @@ async function callOpenAI({ apiKey, model, prompt }) {
 
 const NODE = `
 YOU ARE DEX-RADIO.
-RETURN ONLY A FINISHED, BROADCAST-READY RADIO SCRIPT.
-NO HEADERS. NO LABELS. NO BULLETS. NO RESTATING INTAKE.
+
+OUTPUT RULES:
+- Output ONLY the finished radio script. No headings. No labels. No lists.
+- Do NOT print: "DEX RADIO", "BRAND:", "OFFER:", "CTA:", "MUST-SAY:", "DETAILS:".
+- Intake is ingredients. Output is spoken sentences.
 
 BOX RULES:
-- Box 3 (Audience) and Box 4 (Tone) are SETTINGS ONLY. Never print them.
-- Box 6 (MUST-SAY) is mandatory and verbatim.
-- Box 5 (CTA) is action context; include it if needed to complete the action.
+- Box 3 (Audience) and Box 4 (Tone) are SETTINGS ONLY. Never printed.
+- Box 6 (MUST-SAY) must appear verbatim ONCE, landing at the end.
+- Box 5 (CTA) should be included if needed to complete the action.
 - If LOCATION exists (even if stuffed into CTA), include it verbatim once.
 
 QUALITY:
-Recognition > explanation. Assume shared context. Restraint signals confidence.
+Recognition > explanation. Confident restraint.
 `;
 
 export async function POST(req) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json(
-        { ok: false, error: "Missing OPENAI_API_KEY", meta: { version: VERSION } },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing OPENAI_API_KEY", meta: { version: VERSION } }, { status: 500 });
     }
 
     const body = await req.json().catch(() => ({}));
     const brief = getBrief(body);
-
     const duration = pickDuration(body);
 
-    // Read structured fields first (reliable), but accept old "text" too
     const brand = pick(body, brief, ["brand","property","client","sponsor","business","businessName","company"]);
     const offer = pick(body, brief, ["offer","deal","promo","promotion","hook","headline","offerText"]);
     const audience = pick(body, brief, ["audience","target","listener","listeners","demo","demographic"]);
@@ -119,7 +138,6 @@ export async function POST(req) {
     const mustSay = pick(body, brief, ["mustSay","must_say","mustsay","legal","required","requirements","verbatim","mustHave","mustHaveCopy"]) || "NONE";
     const details = pick(body, brief, ["details","notes","copyPoints","points","copy_points","text","input","prompt"]) || s(body?.text);
 
-    // If user stuffs location into CTA, treat CTA as location fallback
     const location = pick(body, brief, ["location","address","where","city","town","neighborhood"]) || cta || "NONE";
 
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
@@ -130,56 +148,79 @@ ${durationSpec(duration)}
 
 INPUTS:
 DURATION: :${duration}
-BRAND (1): ${brand || "[MISSING BRAND]"}
-OFFER (2): ${offer || "[NONE]"}
-AUDIENCE (3 setting): ${audience || "[NONE]"}
-TONE (4 setting): ${tone || "[NONE]"}
-CTA (5): ${cta || "[NONE]"}
-MUST-SAY (6 verbatim): ${mustSay}
-DETAILS (7): ${details || "[NONE]"}
+BRAND: ${brand || "[MISSING BRAND]"}
+OFFER: ${offer || "[NONE]"}
+AUDIENCE (setting): ${audience || "[NONE]"}
+TONE (setting): ${tone || "[NONE]"}
+CTA: ${cta || "[NONE]"}
 LOCATION (verbatim if provided): ${location}
+MUST-SAY (verbatim; ONCE at end): ${mustSay}
+DETAILS: ${details || "[NONE]"}
 `;
 
     // Call 1
-    let result = await callOpenAI({ apiKey, model, prompt });
-    if (!result.ok) {
-      return NextResponse.json(
-        { ok: false, error: result.error, meta: { version: VERSION, duration } },
-        { status: 500 }
-      );
+    let res = await callOpenAI({ apiKey, model, prompt });
+    if (!res.ok) {
+      return NextResponse.json({ ok: false, error: res.error, meta: { version: VERSION, duration } }, { status: 500 });
     }
 
-    // Enforce MUST-SAY + LOCATION with one corrective retry
-    const needMust = mustSay && mustSay !== "NONE";
-    const needLoc = location && location !== "NONE" && location !== "[NONE]";
-
-    const missingMust = needMust && !includesVerbatim(result.output, mustSay);
-    const missingLoc = needLoc && !includesVerbatim(result.output, location);
-
-    if (missingMust || missingLoc) {
+    // Reject label/echo output; retry once with hard correction
+    if (looksLikeLabelEcho(res.output)) {
       const correction = `
 ${prompt}
 
 CORRECTION:
-Your output is invalid.
-${missingMust ? `- MUST-SAY missing verbatim: "${mustSay}"` : ""}
-${missingLoc ? `- LOCATION missing verbatim: "${location}"` : ""}
-Regenerate ONE :${duration} script. Output ONLY the script. No headers.
+Your output was invalid because it echoed labels/intake.
+Regenerate ONE :${duration} script in spoken sentences only.
+No headings. No labels. No lists.
 `;
       const retry = await callOpenAI({ apiKey, model, prompt: correction });
-      if (retry.ok && retry.output) result = retry;
+      if (retry.ok && retry.output) res = retry;
     }
 
-    // Final: return only the script
+    // Enforce must-say/location
+    let finalText = s(res.output);
+
+    // If still label/echo after retry, fail loudly so you see it
+    if (looksLikeLabelEcho(finalText)) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid output (label/echo). Backend is being hit but model isn't complying.", meta: { version: VERSION, duration } },
+        { status: 500 }
+      );
+    }
+
+    // Ensure must-say appears once at end
+    finalText = dedupeMustSay(finalText, mustSay);
+
+    // If location provided, require it
+    if (location && location !== "NONE" && location !== "[NONE]") {
+      if (!includesVerbatim(finalText, location)) {
+        const correction2 = `
+${prompt}
+
+CORRECTION:
+LOCATION was missing verbatim: "${location}"
+Regenerate ONE :${duration} script. Spoken sentences only. No labels.
+MUST-SAY must appear once at end.
+`;
+        const retry2 = await callOpenAI({ apiKey, model, prompt: correction2 });
+        if (retry2.ok && retry2.output && !looksLikeLabelEcho(retry2.output)) {
+          finalText = dedupeMustSay(retry2.output, mustSay);
+        }
+      }
+    }
+
+    // Final must-say presence check
+    if (mustSay && mustSay !== "NONE" && !includesVerbatim(finalText, mustSay)) {
+      finalText = `${finalText}\n${mustSay}`.trim();
+    }
+
     return NextResponse.json({
       ok: true,
-      output: result.output,
+      output: finalText,
       meta: { version: VERSION, duration },
     });
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "DEX-RADIO generation failed", meta: { version: VERSION } },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "DEX-RADIO generation failed", meta: { version: VERSION } }, { status: 500 });
   }
 }
