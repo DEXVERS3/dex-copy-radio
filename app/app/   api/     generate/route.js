@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 const OPENAI_URL = "https://api.openai.com/v1/responses";
-const VERSION = "DEX_RADIO_GENERATE_ROUTE_DROPIN_V1";
+const VERSION = "DEX_RADIO_APP_APP_GENERATE_V1";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
 function pickDuration(body) {
-  const d = body?.mode ?? body?.duration ?? body?.seconds;
+  const d = body?.mode ?? body?.duration ?? body?.seconds ?? body?.time ?? body?.len;
   const n = Number(d);
   if (n === 15 || n === 30 || n === 60) return n;
   if (typeof d === "string") {
@@ -22,6 +22,7 @@ function pickDuration(body) {
 function looksLikeEcho(text) {
   const u = (text || "").toUpperCase();
   return (
+    u.includes("NO INPUT RECEIVED") ||
     u.includes("DEX RADIO") ||
     u.includes("BRAND:") ||
     u.includes("OFFER:") ||
@@ -45,6 +46,7 @@ async function callOpenAI({ apiKey, prompt }) {
   });
 
   const j = await r.json().catch(() => ({}));
+
   if (!r.ok) {
     const msg = j?.error?.message || "OpenAI request failed";
     return { ok: false, error: msg };
@@ -59,9 +61,9 @@ async function callOpenAI({ apiKey, prompt }) {
 }
 
 function durationRules(duration) {
-  if (duration === 15) return "DURATION: :15. One beat. Punchy. ~35–55 words.";
-  if (duration === 30) return "DURATION: :30. Two beats. Recognition → payoff. ~70–95 words.";
-  return "DURATION: :60. Scene → escalation → belonging. ~140–175 words.";
+  if (duration === 15) return ":15 ONLY. One beat. Velocity + punch. ~35–55 words.";
+  if (duration === 30) return ":30 ONLY. Two beats (recognition/contrast → payoff). ~70–95 words.";
+  return ":60 ONLY. Scene → escalation → belonging. ~140–175 words.";
 }
 
 export async function POST(req) {
@@ -77,35 +79,39 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const duration = pickDuration(body);
 
-    // Compatible with your page.js payload:
-    const brand = s(body?.brand);
-    const offer = s(body?.offer);
-    const cta = s(body?.cta);
-    const mustSay = s(body?.mustSay);
-    const details = s(body?.details || body?.text || "");
+    // This matches your page.js payload exactly
+    const brand = s(body.brand);
+    const offer = s(body.offer);
+    const cta = s(body.cta);
+    const mustSay = s(body.mustSay);
+    const details = s(body.details || body.text || "");
 
     const prompt = `
 You are DEX-RADIO.
 
-Write a ${duration}-second radio spot.
+Write a ${duration}-second radio commercial.
 ${durationRules(duration)}
 
 HARD OUTPUT RULES:
-- Output ONLY the script (spoken sentences).
-- No headings, no labels, no bullets, no "DEX RADIO".
-- Do not echo the intake.
+- Output ONLY the finished script (spoken sentences).
+- NO headings. NO labels. NO bullet lists.
+- Do NOT output: "DEX RADIO", "BRAND:", "OFFER:", "CTA:", "MUST-SAY:", "DETAILS:".
+- Do not echo intake. Use it as ingredients.
 
-INGREDIENTS (do NOT repeat as labels):
+INGREDIENTS:
 Brand: ${brand || "[BRAND]"}
 Offer: ${offer || "[OFFER]"}
-CTA/Location context: ${cta || "[CTA]"}
 Details: ${details || "[DETAILS]"}
+CTA context/location: ${cta || "[CTA]"}
 
 MUST-SAY:
 Include this line verbatim ONCE, as the FINAL line:
 "${mustSay || "NONE"}"
+
+Return ONLY the script.
 `;
 
+    // Call #1
     let res = await callOpenAI({ apiKey, prompt });
     if (!res.ok) {
       return NextResponse.json(
@@ -114,15 +120,11 @@ Include this line verbatim ONCE, as the FINAL line:
       );
     }
 
-    // One hard retry if it echoes intake/labels
+    // One hard retry if it echoes/labels
     if (!res.output || looksLikeEcho(res.output)) {
       const retryPrompt = `
-INVALID: You echoed intake or used labels.
-
-Regenerate ONE ${duration}-second spot:
-- spoken sentences only
-- no headings/labels
-- must-say once at end
+INVALID: You echoed intake or used labels or returned "No input received".
+Regenerate ONE ${duration}-second radio spot with spoken sentences only and no labels.
 
 ${prompt}
 `;
@@ -132,7 +134,7 @@ ${prompt}
 
     if (!res.output || looksLikeEcho(res.output)) {
       return NextResponse.json(
-        { ok: false, error: "Invalid output (echo/labels).", meta: { version: VERSION, duration } },
+        { ok: false, error: "Invalid model output (echo/labels).", meta: { version: VERSION, duration } },
         { status: 500 }
       );
     }
