@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react';
 import VoiceControls from './components/VoiceControls';
 
-
 const MODES = {
   '15': { label: ':15', hint: 'Tight. One hook + one benefit + CTA + must-say.' },
   '30': { label: ':30', hint: 'Add one proof point or quick story beat.' },
@@ -186,6 +185,14 @@ export default function Home() {
           rows={6}
           placeholder="Any specifics: price, dates, location, qualifiers, phone, URL, station line, etc."
           style={{ ...inputStyle, marginTop: 8 }}
+        />
+
+        {/* DEX Voice V1 — push-to-talk dictation + optional output playback */}
+        <VoiceControls
+          onTranscript={(text) => {
+            setDetails((prev) => (prev ? `${prev}\n${text}` : text));
+          }}
+          onSpeakRequest={() => out}
         />
 
         <div style={{ marginTop: 14, fontSize: 12, color: '#b5b5b5' }}>Spot length</div>
