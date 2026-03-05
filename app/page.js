@@ -1,6 +1,8 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import VoiceControls from './components/VoiceControls';
+
 
 const MODES = {
   '15': { label: ':15', hint: 'Tight. One hook + one benefit + CTA + must-say.' },
