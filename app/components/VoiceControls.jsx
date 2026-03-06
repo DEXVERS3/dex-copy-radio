@@ -26,6 +26,14 @@ export default function VoiceControls({
       'speechSynthesis' in window &&
       typeof window.SpeechSynthesisUtterance !== 'undefined';
     setSupported(ok);
+
+    // Prime voices (Chrome sometimes needs this before speaking reliably)
+    try {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        try { window.speechSynthesis.getVoices(); } catch {}
+      };
+    } catch {}
   }, [SpeechRecognition]);
 
   function startListening() {
@@ -65,8 +73,8 @@ export default function VoiceControls({
     if (committed) onTranscript?.(committed);
   }
 
-  function speakNow(text) {
-    if (!ttsOn) return;
+  function speak(text, force = false) {
+    if (!force && !ttsOn) return;
     if (typeof window === 'undefined') return;
     if (!text) return;
 
@@ -77,12 +85,24 @@ export default function VoiceControls({
     u.pitch = 1.0;
     u.volume = 1.0;
 
+    try {
+      // Prefer a clean US English voice if available
+      const voices = window.speechSynthesis.getVoices?.() ?? [];
+      const preferred =
+        voices.find(v => /en-US/i.test(v.lang) && /Google|Microsoft|Samantha|Alex/i.test(v.name)) ||
+        voices.find(v => /en-US/i.test(v.lang)) ||
+        voices.find(v => /en/i.test(v.lang)) ||
+        null;
+      if (preferred) u.voice = preferred;
+    } catch {}
+
     window.speechSynthesis.speak(u);
   }
 
   function speakOutput() {
     const text = onSpeakRequest?.() ?? '';
-    speakNow(text);
+    // Force speak on button press (checkbox only controls auto-speak behavior later)
+    speak(text, true);
   }
 
   if (!supported) {
