@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function VoiceControls({
-  onTranscript,        // (text) => void  -> where dictation gets sent (e.g., to Details)
-  onSpeakRequest,      // () => string     -> provide text to speak (e.g., output)
+  onTranscript,        // (text) => void
+  onSpeakRequest,      // () => string
   enabledByDefault = true
 }) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
   const [ttsOn, setTtsOn] = useState(enabledByDefault);
+
   const recogRef = useRef(null);
   const finalRef = useRef('');
 
@@ -19,7 +20,12 @@ export default function VoiceControls({
   }, []);
 
   useEffect(() => {
-    setSupported(Boolean(SpeechRecognition) && typeof window !== 'undefined' && 'speechSynthesis' in window);
+    const ok =
+      typeof window !== 'undefined' &&
+      Boolean(SpeechRecognition) &&
+      'speechSynthesis' in window &&
+      typeof window.SpeechSynthesisUtterance !== 'undefined';
+    setSupported(ok);
   }, [SpeechRecognition]);
 
   function startListening() {
@@ -29,27 +35,19 @@ export default function VoiceControls({
     finalRef.current = '';
 
     const r = new SpeechRecognition();
-    r.continuous = true;        // push-to-talk, but continuous while held
+    r.continuous = true;
     r.interimResults = true;
     r.lang = 'en-US';
 
     r.onresult = (event) => {
-      let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0]?.transcript ?? '';
         if (event.results[i].isFinal) finalRef.current += (text + ' ');
-        else interim += text;
       }
-      // We only commit FINAL when user releases (stopListening)
     };
 
-    r.onerror = () => {
-      setListening(false);
-    };
-
-    r.onend = () => {
-      setListening(false);
-    };
+    r.onerror = () => setListening(false);
+    r.onend = () => setListening(false);
 
     recogRef.current = r;
     setListening(true);
@@ -67,12 +65,11 @@ export default function VoiceControls({
     if (committed) onTranscript?.(committed);
   }
 
-  function speak(text) {
+  function speakNow(text) {
     if (!ttsOn) return;
     if (typeof window === 'undefined') return;
     if (!text) return;
 
-    // Hard stop any previous audio
     try { window.speechSynthesis.cancel(); } catch {}
 
     const u = new SpeechSynthesisUtterance(text);
@@ -80,26 +77,19 @@ export default function VoiceControls({
     u.pitch = 1.0;
     u.volume = 1.0;
 
-    // Pick a “clean/pro” English voice if available
-    const voices = window.speechSynthesis.getVoices?.() ?? [];
-    const preferred = voices.find(v => /en-US/i.test(v.lang) && /Google|Microsoft|Samantha|Alex/i.test(v.name))
-                   || voices.find(v => /en/i.test(v.lang))
-                   || null;
-    if (preferred) u.voice = preferred;
-
     window.speechSynthesis.speak(u);
   }
 
   function speakOutput() {
     const text = onSpeakRequest?.() ?? '';
-    speak(text);
+    speakNow(text);
   }
 
   if (!supported) {
     return (
       <div style={{ marginTop: 12, padding: 12, border: '1px solid #2a2a2a', borderRadius: 10 }}>
         <div style={{ fontSize: 12, color: '#b5b5b5' }}>
-          Voice controls require Chrome/Edge (Web Speech API). This browser doesn’t support it.
+          Voice controls require Chrome/Edge (Web Speech + Speech Synthesis). This browser doesn’t support it.
         </div>
       </div>
     );
@@ -151,7 +141,7 @@ export default function VoiceControls({
       </div>
 
       <div style={{ marginTop: 8, fontSize: 12, color: '#b5b5b5' }}>
-        Push-to-talk appends dictated text into <b>Details</b>. Then hit Generate.
+        Push-to-talk appends dictated text into <b>Details</b>. Then hit :15 / :30 / :60.
       </div>
     </div>
   );
