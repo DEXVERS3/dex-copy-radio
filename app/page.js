@@ -15,7 +15,6 @@ export default function Home() {
   const [out, setOut] = useState('');
   const [version, setVersion] = useState('');
 
-  // Intake fields
   const [brand, setBrand] = useState('');
   const [offer, setOffer] = useState('');
   const [audience, setAudience] = useState('');
@@ -32,8 +31,8 @@ export default function Home() {
     setBusy(true);
     setOut('');
     setVersion('');
+
     try {
-      // EQUATION TEXT: 1 + 2 + 5 + 6 + 7
       const equationText = [
         brand && `BRAND: ${brand}`,
         offer && `OFFER: ${offer}`,
@@ -66,7 +65,6 @@ export default function Home() {
 
       const j = await r.json().catch(() => ({}));
 
-      // show backend version so we KNOW what code is live
       setVersion(j?.meta?.version ? String(j.meta.version) : '');
 
       if (!r.ok || j?.ok === false) {
@@ -187,12 +185,11 @@ export default function Home() {
           style={{ ...inputStyle, marginTop: 8 }}
         />
 
-        {/* DEX Voice V1 — push-to-talk dictation + optional output playback */}
         <VoiceControls
           onTranscript={(text) => {
             setDetails((prev) => (prev ? `${prev}\n${text}` : text));
           }}
-          onSpeakRequest={() => out}
+          spokenText={out}
         />
 
         <div style={{ marginTop: 14, fontSize: 12, color: '#b5b5b5' }}>Spot length</div>
