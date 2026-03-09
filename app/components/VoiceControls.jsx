@@ -3,13 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 export default function VoiceControls({
-  onTranscript,        // (text) => void
-  onSpeakRequest,      // () => string
-  enabledByDefault = true
+  onTranscript,
+  spokenText = '',
 }) {
   const [supported, setSupported] = useState(false);
   const [listening, setListening] = useState(false);
-  const [ttsOn, setTtsOn] = useState(enabledByDefault);
 
   const recogRef = useRef(null);
   const finalRef = useRef('');
@@ -25,15 +23,19 @@ export default function VoiceControls({
       Boolean(SpeechRecognition) &&
       'speechSynthesis' in window &&
       typeof window.SpeechSynthesisUtterance !== 'undefined';
+
     setSupported(ok);
 
-    // Prime voices (Chrome sometimes needs this before speaking reliably)
-    try {
-      window.speechSynthesis.getVoices();
-      window.speechSynthesis.onvoiceschanged = () => {
-        try { window.speechSynthesis.getVoices(); } catch {}
-      };
-    } catch {}
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.getVoices();
+        window.speechSynthesis.onvoiceschanged = () => {
+          try {
+            window.speechSynthesis.getVoices();
+          } catch {}
+        };
+      } catch {}
+    }
   }, [SpeechRecognition]);
 
   function startListening() {
@@ -50,7 +52,9 @@ export default function VoiceControls({
     r.onresult = (event) => {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const text = event.results[i][0]?.transcript ?? '';
-        if (event.results[i].isFinal) finalRef.current += (text + ' ');
+        if (event.results[i].isFinal) {
+          finalRef.current += `${text} `;
+        }
       }
     };
 
@@ -66,50 +70,48 @@ export default function VoiceControls({
     const r = recogRef.current;
     if (!r) return;
 
-    try { r.stop(); } catch {}
+    try {
+      r.stop();
+    } catch {}
+
     recogRef.current = null;
 
     const committed = finalRef.current.trim();
     if (committed) onTranscript?.(committed);
   }
 
-  function speak(text, force = false) {
-    if (!force && !ttsOn) return;
+  function speak(text) {
     if (typeof window === 'undefined') return;
-    if (!text) return;
-
-    try { window.speechSynthesis.cancel(); } catch {}
-
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = 1.0;
-    u.pitch = 1.0;
-    u.volume = 1.0;
+    if (!text || !text.trim()) return;
 
     try {
-      // Prefer a clean US English voice if available
-      const voices = window.speechSynthesis.getVoices?.() ?? [];
-      const preferred =
-        voices.find(v => /en-US/i.test(v.lang) && /Google|Microsoft|Samantha|Alex/i.test(v.name)) ||
-        voices.find(v => /en-US/i.test(v.lang)) ||
-        voices.find(v => /en/i.test(v.lang)) ||
-        null;
-      if (preferred) u.voice = preferred;
+      window.speechSynthesis.cancel();
     } catch {}
 
-    window.speechSynthesis.speak(u);
-  }
+    const utterance = new window.SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
 
-  function speakOutput() {
-    const text = onSpeakRequest?.() ?? '';
-    // Force speak on button press (checkbox only controls auto-speak behavior later)
-    speak(text, true);
+    try {
+      const voices = window.speechSynthesis.getVoices?.() ?? [];
+      const preferred =
+        voices.find((v) => /en-US/i.test(v.lang) && /Google|Microsoft|Samantha|Alex/i.test(v.name)) ||
+        voices.find((v) => /en-US/i.test(v.lang)) ||
+        voices.find((v) => /en/i.test(v.lang)) ||
+        null;
+
+      if (preferred) utterance.voice = preferred;
+    } catch {}
+
+    window.speechSynthesis.speak(utterance);
   }
 
   if (!supported) {
     return (
       <div style={{ marginTop: 12, padding: 12, border: '1px solid #2a2a2a', borderRadius: 10 }}>
         <div style={{ fontSize: 12, color: '#b5b5b5' }}>
-          Voice controls require Chrome/Edge (Web Speech + Speech Synthesis). This browser doesn’t support it.
+          Voice controls require Chrome or Edge.
         </div>
       </div>
     );
@@ -119,6 +121,7 @@ export default function VoiceControls({
     <div style={{ marginTop: 12, padding: 12, border: '1px solid #2a2a2a', borderRadius: 10 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button
+          type="button"
           onMouseDown={startListening}
           onMouseUp={stopListening}
           onMouseLeave={stopListening}
@@ -130,38 +133,45 @@ export default function VoiceControls({
             border: '1px solid #2a2a2a',
             borderRadius: 10,
             padding: '10px 12px',
-            cursor: 'pointer'
+            cursor: 'pointer',
           }}
         >
           {listening ? 'Listening… (release to stop)' : 'Push-to-talk'}
         </button>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#b5b5b5' }}>
-          <input
-            type="checkbox"
-            checked={ttsOn}
-            onChange={(e) => setTtsOn(e.target.checked)}
-          />
-          Speak output
-        </label>
-
         <button
-          onClick={speakOutput}
+          type="button"
+          onClick={() => speak(spokenText)}
           style={{
             background: '#0f0f0f',
             color: '#fff',
             border: '1px solid #2a2a2a',
             borderRadius: 10,
             padding: '10px 12px',
-            cursor: 'pointer'
+            cursor: 'pointer',
           }}
         >
           Play last output
         </button>
+
+        <button
+          type="button"
+          onClick={() => speak('DEX voice test')}
+          style={{
+            background: '#0f0f0f',
+            color: '#fff',
+            border: '1px solid #2a2a2a',
+            borderRadius: 10,
+            padding: '10px 12px',
+            cursor: 'pointer',
+          }}
+        >
+          Test voice
+        </button>
       </div>
 
       <div style={{ marginTop: 8, fontSize: 12, color: '#b5b5b5' }}>
-        Push-to-talk appends dictated text into <b>Details</b>. Then hit :15 / :30 / :60.
+        Push-to-talk adds text to Details. Generate with :15 / :30 / :60. Then click Play last output.
       </div>
     </div>
   );
