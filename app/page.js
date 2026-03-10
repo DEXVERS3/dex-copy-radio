@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import VoiceControls from './components/VoiceControls';
 
 const MODES = {
@@ -8,6 +8,14 @@ const MODES = {
   '30': { label: ':30', hint: 'Add one proof point or quick story beat.' },
   '60': { label: ':60', hint: 'Two beats + clearer benefit + clean close.' },
 };
+
+const VOICE_PRESETS = [
+  { value: 'executive', label: 'Executive Baritone' },
+  { value: 'veteran', label: 'Veteran Authority' },
+  { value: 'urban', label: 'Urban Command' },
+  { value: 'female_modern', label: 'Modern Female Pro' },
+  { value: 'female_warm', label: 'Warm Female Pro' },
+];
 
 export default function Home() {
   const [mode, setMode] = useState('30');
@@ -23,7 +31,19 @@ export default function Home() {
   const [mustSay, setMustSay] = useState('');
   const [details, setDetails] = useState('');
 
+  const [voicePreset, setVoicePreset] = useState('executive');
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceError, setVoiceError] = useState('');
+
+  const audioRef = useRef(null);
+
   const modeHint = useMemo(() => MODES[mode]?.hint ?? '', [mode]);
+
+  function cleanScriptForVoice(text) {
+    return String(text || '')
+      .replace(/^\[\[.*?\]\]\s*/m, '')
+      .trim();
+  }
 
   async function generate(nextMode) {
     const useMode = typeof nextMode === 'string' ? nextMode : mode;
@@ -31,6 +51,7 @@ export default function Home() {
     setBusy(true);
     setOut('');
     setVersion('');
+    setVoiceError('');
 
     try {
       const equationText = [
@@ -80,6 +101,64 @@ export default function Home() {
     }
   }
 
+  async function playVoice() {
+    const script = cleanScriptForVoice(out);
+
+    if (!script || script.startsWith('Error:')) return;
+
+    setVoiceBusy(true);
+    setVoiceError('');
+
+    try {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+
+      const r = await fetch('/api/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          script,
+          voicePreset,
+        }),
+      });
+
+      if (!r.ok) {
+        let message = `Voice error: ${r.status}`;
+        try {
+          const j = await r.json();
+          if (j?.error) message = `Voice error: ${j.error}`;
+        } catch {}
+        setVoiceError(message);
+        return;
+      }
+
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+      };
+
+      await audio.play();
+    } catch (e) {
+      setVoiceError(`Voice error: ${String(e?.message || e)}`);
+    } finally {
+      setVoiceBusy(false);
+    }
+  }
+
+  function stopVoice() {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+  }
+
   function reset() {
     setBrand('');
     setOffer('');
@@ -90,6 +169,8 @@ export default function Home() {
     setDetails('');
     setOut('');
     setVersion('');
+    setVoiceError('');
+    stopVoice();
   }
 
   const inputStyle = {
@@ -262,6 +343,71 @@ export default function Home() {
         >
           {out || 'Output will appear here'}
         </div>
+
+        <div style={{ marginTop: 18, fontSize: 12, color: '#b5b5b5' }}>Voice preset</div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select
+            value={voicePreset}
+            onChange={(e) => setVoicePreset(e.target.value)}
+            style={{
+              background: '#0f0f0f',
+              color: '#fff',
+              border: '1px solid #2a2a2a',
+              borderRadius: 10,
+              padding: '12px 14px',
+              fontSize: 14,
+              minWidth: 240,
+            }}
+          >
+            {VOICE_PRESETS.map((voice) => (
+              <option key={voice.value} value={voice.value}>
+                {voice.label}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={playVoice}
+            disabled={!out || busy || voiceBusy || out.startsWith('Error:')}
+            style={{
+              background: '#ffffff',
+              color: '#000',
+              border: '1px solid #fff',
+              padding: '10px 14px',
+              borderRadius: 10,
+              fontSize: 14,
+              cursor: !out || busy || voiceBusy || out.startsWith('Error:') ? 'not-allowed' : 'pointer',
+              opacity: !out || busy || voiceBusy || out.startsWith('Error:') ? 0.6 : 1,
+            }}
+          >
+            {voiceBusy ? 'Building voice…' : 'Play announcer voice'}
+          </button>
+
+          <button
+            type="button"
+            onClick={stopVoice}
+            disabled={voiceBusy}
+            style={{
+              background: 'transparent',
+              color: '#fff',
+              padding: '10px 14px',
+              borderRadius: 10,
+              border: '1px solid #2a2a2a',
+              fontSize: 14,
+              cursor: voiceBusy ? 'not-allowed' : 'pointer',
+              opacity: voiceBusy ? 0.6 : 1,
+            }}
+          >
+            Stop
+          </button>
+        </div>
+
+        {!!voiceError && (
+          <div style={{ marginTop: 10, fontSize: 12, color: '#ff8b8b' }}>
+            {voiceError}
+          </div>
+        )}
 
         <div style={{ marginTop: 8, fontSize: 12, color: '#7a7a7a' }}>
           {version ? `API version: ${version}` : ''}
