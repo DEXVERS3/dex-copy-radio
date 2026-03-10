@@ -35,19 +35,17 @@ function ensurePeriod(text) {
   return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
-function titleCaseish(text) {
-  return clean(text);
-}
-
 function stripLabelsEverywhere(text) {
   const raw = (text || "").split("\n");
   const out = [];
+
   for (let line of raw) {
     if (/^\s*(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS|AUDIENCE|TONE)\s*:/i.test(line)) continue;
     line = line.replace(/\b(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS|AUDIENCE|TONE)\s*:\s*/gi, "");
     line = line.replace(/\s{2,}/g, " ").trim();
     if (line) out.push(line);
   }
+
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -70,73 +68,51 @@ function unique(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
 
-function build15({ brand, offer, cta, mustSay, details }) {
+function build15({ brand, offer, cta, details }) {
   const out = [];
 
-  if (offer) {
-    out.push(ensurePeriod(`${titleCaseish(brand)} presents ${offer}`));
-  } else {
-    out.push(ensurePeriod(`${titleCaseish(brand)}`));
-  }
+  if (offer) out.push(ensurePeriod(`${brand} has ${offer}`));
+  else out.push(ensurePeriod(`${brand}`));
 
   if (details[0]) out.push(details[0]);
 
-  if (cta) {
-    out.push(ensurePeriod(cta));
-  } else if (brand) {
-    out.push(ensurePeriod(`Visit ${brand} today`));
-  }
+  if (cta) out.push(ensurePeriod(cta));
+  else out.push(ensurePeriod(`Visit ${brand} today`));
 
   return unique(out).join("\n");
 }
 
-function build30({ brand, offer, audience, cta, mustSay, details }) {
+function build30({ brand, offer, audience, cta, details }) {
   const out = [];
 
-  if (offer) {
-    out.push(ensurePeriod(`${titleCaseish(brand)} has ${offer}`));
-  } else {
-    out.push(ensurePeriod(`${titleCaseish(brand)} is on now`));
-  }
+  if (offer) out.push(ensurePeriod(`${brand} has ${offer}`));
+  else out.push(ensurePeriod(`${brand} is on now`));
 
-  if (audience) {
-    out.push(ensurePeriod(`Built for ${audience}`));
-  }
+  if (audience) out.push(ensurePeriod(`For ${audience}`));
 
   if (details[0]) out.push(details[0]);
   if (details[1]) out.push(details[1]);
 
-  if (cta) {
-    out.push(ensurePeriod(cta));
-  } else if (brand) {
-    out.push(ensurePeriod(`Get to ${brand} today`));
-  }
+  if (cta) out.push(ensurePeriod(cta));
+  else out.push(ensurePeriod(`Get to ${brand} today`));
 
   return unique(out).join("\n");
 }
 
-function build60({ brand, offer, audience, cta, mustSay, details }) {
+function build60({ brand, offer, audience, cta, details }) {
   const out = [];
 
-  if (brand && offer) {
-    out.push(ensurePeriod(`At ${brand}, here is the play: ${offer}`));
-  } else if (brand) {
-    out.push(ensurePeriod(`${brand} is ready`));
-  }
+  if (offer) out.push(ensurePeriod(`At ${brand}, here is the offer: ${offer}`));
+  else out.push(ensurePeriod(`${brand} is ready`));
 
-  if (audience) {
-    out.push(ensurePeriod(`Made for ${audience}`));
-  }
+  if (audience) out.push(ensurePeriod(`Built for ${audience}`));
 
   for (const d of details.slice(0, 4)) {
     out.push(d);
   }
 
-  if (cta) {
-    out.push(ensurePeriod(cta));
-  } else if (brand) {
-    out.push(ensurePeriod(`Visit ${brand} today`));
-  }
+  if (cta) out.push(ensurePeriod(cta));
+  else out.push(ensurePeriod(`Visit ${brand} today`));
 
   return unique(out).join("\n");
 }
@@ -155,10 +131,10 @@ export async function POST(req) {
 
     let script =
       duration === 15
-        ? build15({ brand, offer, audience, cta, mustSay, details })
+        ? build15({ brand, offer, cta, details })
         : duration === 30
-        ? build30({ brand, offer, audience, cta, mustSay, details })
-        : build60({ brand, offer, audience, cta, mustSay, details });
+        ? build30({ brand, offer, audience, cta, details })
+        : build60({ brand, offer, audience, cta, details });
 
     script = stripLabelsEverywhere(script);
     script = ensureMustSayFinalLine(script, mustSay);
