@@ -10,14 +10,50 @@ function stripDexHeader(text) {
   return s(text).replace(/^\[\[.*?\]\]\s*/m, "").trim();
 }
 
-function shapeDelivery(script) {
-  return stripDexHeader(script)
-    .replace(/\r/g, "")
-    .replace(/\n{2,}/g, "\n")
-    .replace(/\n/g, ". ")
-    .replace(/:\s*/g, ". ")
+function normalizeLine(line) {
+  return s(line)
     .replace(/\s+/g, " ")
+    .replace(/[“”]/g, '"')
     .trim();
+}
+
+function addPerformanceShape(script) {
+  const rawLines = stripDexHeader(script)
+    .split("\n")
+    .map(normalizeLine)
+    .filter(Boolean);
+
+  const lines = rawLines.map((line, index) => {
+    let out = line;
+
+    // stronger pause on all-caps promo lines
+    if (/^[A-Z0-9'&$%!.,;:\-\s]+$/.test(out)) {
+      out = out.toLowerCase().replace(/\b\w/g, (m) => m.toUpperCase());
+    }
+
+    // shape money / offer reads
+    out = out.replace(/\s*;\s*/g, ". ");
+    out = out.replace(/\s+-\s+/g, " — ");
+    out = out.replace(/\bfor \$([0-9]+)/gi, "for $1 dollars");
+    out = out.replace(/\$([0-9]+)/g, "$$$1");
+
+    // make CTA and tag lines land harder
+    if (
+      /^(visit|stop by|get to|head to|go to|call|book|watch|join|fly|go birds|don’t miss|never miss)/i.test(out)
+    ) {
+      out = `Pause. ${out}`;
+    }
+
+    // slight dramatic pause before final line
+    if (index === rawLines.length - 1) {
+      out = `Pause. ${out}`;
+    }
+
+    if (!/[.!?]$/.test(out)) out += ".";
+    return out;
+  });
+
+  return lines.join(" ");
 }
 
 function getVoiceProfile(preset) {
@@ -26,37 +62,42 @@ function getVoiceProfile(preset) {
       return {
         voice: "cedar",
         instructions:
-          "Deliver like a polished senior radio announcer. Controlled authority. Clean pacing. Strong confidence. Slight emphasis on the offer. Clear pause before the call to action.",
+          "Perform this like a polished radio announcer, not a literal reader. Use broadcast cadence. Let the hook land. Separate the offer cleanly. Add slight energy lifts on promo lines. Pause before the call to action. Never sound robotic or like you are reading a list.",
       };
+
     case "veteran":
       return {
         voice: "marin",
         instructions:
-          "Deliver like a seasoned broadcast pro. Calm authority. Natural confidence. Slight gravitas. Never robotic. Let key phrases land with measured pauses.",
+          "Perform this like a seasoned radio pro. Calm authority. Natural pacing. Mild gravitas. Let short lines breathe. Treat each sentence like copy, not text on a page. Strong pause before the final call to action.",
       };
+
     case "urban":
       return {
         voice: "onyx",
         instructions:
-          "Deliver with modern command and natural urban energy. Tight rhythm. Confident without hype. Strong hook. Clean offer read. Sharp close.",
+          "Perform this with modern radio energy and command. Tight rhythm. Let promo lines hit. Do not read literally. Shape it like a produced station spot. Strong hook, clear offer, clean punchy close.",
       };
+
     case "female_modern":
       return {
         voice: "nova",
         instructions:
-          "Deliver like a modern female radio professional. Clean, confident, polished, commercial-ready. Strong clarity. Natural pacing. Subtle emphasis on the hook and CTA.",
+          "Perform this like a modern female commercial voice. Polished, confident, bright, natural. Add subtle attitude where helpful. Let the offer breathe. Treat this as radio copy, not narration.",
       };
+
     case "female_warm":
       return {
         voice: "sage",
         instructions:
-          "Deliver with warmth, confidence, and professional authority. Human, inviting, smooth, and composed. Strong readability. Natural announcer pacing.",
+          "Perform this with warmth, confidence, and commercial polish. Smooth and human. Use natural announcer pacing. Shape the read with pauses and emphasis so it sounds like a produced radio promo, not literal narration.",
       };
+
     default:
       return {
         voice: "cedar",
         instructions:
-          "Deliver like a professional radio announcer. Natural cadence. Clean sentence breaks. Slight emphasis on the offer. Clear pause before the CTA.",
+          "Perform this like a professional radio announcer. Broadcast pacing. Natural emphasis. Pause before the CTA. Never read literally.",
       };
   }
 }
@@ -76,7 +117,7 @@ export async function POST(req) {
       return NextResponse.json({ ok: false, error: "OPENAI_API_KEY is missing." }, { status: 500 });
     }
 
-    const shaped = shapeDelivery(script);
+    const shaped = addPerformanceShape(script);
     const profile = getVoiceProfile(preset);
 
     const response = await fetch("https://api.openai.com/v1/audio/speech", {
