@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-const VERSION = "[[DEX_DEMO_MODE_V2_CLEAN]]";
+const VERSION = "[[DEX_RADIO_V3_NEUTRAL_COPY]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -25,25 +25,27 @@ function lines(text) {
     .filter(Boolean);
 }
 
-function pick(arr, seed) {
-  return arr[Math.abs(seed) % arr.length];
+function clean(text) {
+  return s(text).replace(/\s+/g, " ").trim();
+}
+
+function ensurePeriod(text) {
+  const t = clean(text);
+  if (!t) return "";
+  return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
 function stripLabelsEverywhere(text) {
-  // Remove ANY label-like lines and inline "LABEL: ..."
   const raw = (text || "").split("\n");
   const out = [];
+
   for (let line of raw) {
-    // drop whole line if it begins with a label
-    if (/^\s*(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS)\s*:/i.test(line)) continue;
-
-    // remove inline labels like "OFFER: xyz"
-    line = line.replace(/\b(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS)\s*:\s*/gi, "");
-
-    // collapse extra spaces
+    if (/^\s*(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS|AUDIENCE|TONE)\s*:/i.test(line)) continue;
+    line = line.replace(/\b(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS|AUDIENCE|TONE)\s*:\s*/gi, "");
     line = line.replace(/\s{2,}/g, " ").trim();
     if (line) out.push(line);
   }
+
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -51,142 +53,68 @@ function ensureMustSayFinalLine(script, mustSay) {
   const ms = s(mustSay);
   if (!ms) return script.trim();
 
-  // remove any existing occurrences (case-insensitive)
   const esc = ms.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const re = new RegExp(esc, "gi");
   let out = (script || "").replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
 
-  // must-say as FINAL line, verbatim
   return `${out}\n${ms}`.trim();
 }
 
-function buildDetailBits(details) {
-  const bits = lines(details);
-  return bits.length
-    ? bits
-    : [
-        "Walk in, get it done, keep moving.",
-        "No appointment drama.",
-        "Fast, clean, and straightforward.",
-      ];
+function makeDetailBits(details) {
+  return lines(details).map(ensurePeriod).filter(Boolean);
 }
 
-function make15({ brand, offer, cta, detailBits, seed }) {
-  const hook = pick(
-    [
-      "If your oil change takes longer than your coffee, something’s wrong.",
-      "Busy day? Good. Don’t waste it on an oil change.",
-      "You’ve got ten minutes. That’s enough to handle this.",
-    ],
-    seed
-  );
-
-  const punch = pick(
-    [
-      `${brand}. ${offer}. In. Out. Done.`,
-      `${offer}. That’s the whole point. That’s ${brand}.`,
-      `${brand} gets you back on the road — ${offer}.`,
-    ],
-    seed + 3
-  );
-
-  const detail = pick(detailBits, seed + 7);
-
-  const close = pick(
-    [
-      `${cta || `Visit ${brand} today`}.`,
-      `${cta || `Stop by ${brand} today`}.`,
-      `${cta || `Head to ${brand} today`}.`,
-    ],
-    seed + 11
-  );
-
-  return [hook, punch, detail, close].join("\n");
+function unique(arr) {
+  return [...new Set(arr.filter(Boolean))];
 }
 
-function make30({ brand, offer, cta, detailBits, seed }) {
-  const beat1 = pick(
-    [
-      "You know that moment you realize your oil’s overdue… and you immediately regret it?",
-      "If you’ve been putting it off, this is the painless fix.",
-      "Your car doesn’t need a “someday.” It needs an oil change.",
-    ],
-    seed
-  );
+function build15({ brand, offer, cta, details }) {
+  const out = [];
 
-  const beat2 = pick(
-    [
-      `${brand} makes it simple: ${offer}.`,
-      `At ${brand}, it’s quick, clean, and done: ${offer}.`,
-      `${offer}. That’s what ${brand} is built for.`,
-    ],
-    seed + 2
-  );
+  if (offer) out.push(ensurePeriod(`${brand} has ${offer}`));
+  else out.push(ensurePeriod(`${brand}`));
 
-  const proof = pick(
-    [
-      "No long wait. No weird upsell energy. Just get it handled.",
-      "You’re not there to hang out — you’re there to get back to your life.",
-      "This is the fastest check-off on your list today.",
-    ],
-    seed + 5
-  );
+  if (details[0]) out.push(details[0]);
 
-  const detail = pick(detailBits, seed + 9);
+  if (cta) out.push(ensurePeriod(cta));
+  else out.push(ensurePeriod(`Visit ${brand} today`));
 
-  const close = pick(
-    [
-      `${cta || `Get to ${brand} today`}.`,
-      `${cta || `Visit ${brand} today`}.`,
-      `${cta || `Stop by ${brand} today`}.`,
-    ],
-    seed + 12
-  );
-
-  return [beat1, beat2, proof, detail, close].join("\n");
+  return unique(out).join("\n");
 }
 
-function make60({ brand, offer, cta, detailBits, seed }) {
-  const scene = pick(
-    [
-      "Picture your day for a second. You’re already behind, your phone’s blowing up, and your car reminds you the oil change is overdue.",
-      "It’s one of those days — errands, meetings, and your car hits you with the reminder you’ve been avoiding.",
-      "You’ve got places to be, and the last thing you need is a half-day oil change saga.",
-    ],
-    seed
-  );
+function build30({ brand, offer, audience, cta, details }) {
+  const out = [];
 
-  const escalation = pick(
-    [
-      `Here’s the move: ${brand}. ${offer}.`,
-      `Don’t turn it into a project. Go to ${brand}. ${offer}.`,
-      `${offer}. That’s why people hit ${brand} when they’re not trying to waste a day.`,
-    ],
-    seed + 3
-  );
+  if (offer) out.push(ensurePeriod(`${brand} has ${offer}`));
+  else out.push(ensurePeriod(`${brand} is on now`));
 
-  const belonging = pick(
-    [
-      "This is the spot for people who want it done right — and done fast.",
-      "It’s for people who don’t need the speech. Just the fix.",
-      "Quick in, quick out, back to your life.",
-    ],
-    seed + 7
-  );
+  if (audience) out.push(ensurePeriod(`For ${audience}`));
 
-  const a = pick(detailBits, seed + 10);
-  const b = pick(detailBits, seed + 13);
+  if (details[0]) out.push(details[0]);
+  if (details[1]) out.push(details[1]);
 
-  const close = pick(
-    [
-      `${cta || `Head to ${brand} today`}.`,
-      `${cta || `Visit ${brand} today`}.`,
-      `${cta || `Stop by ${brand} today`}.`,
-    ],
-    seed + 16
-  );
+  if (cta) out.push(ensurePeriod(cta));
+  else out.push(ensurePeriod(`Get to ${brand} today`));
 
-  return [scene, escalation, belonging, a, b, close].join("\n");
+  return unique(out).join("\n");
+}
+
+function build60({ brand, offer, audience, cta, details }) {
+  const out = [];
+
+  if (offer) out.push(ensurePeriod(`At ${brand}, here is the offer: ${offer}`));
+  else out.push(ensurePeriod(`${brand} is ready`));
+
+  if (audience) out.push(ensurePeriod(`Built for ${audience}`));
+
+  for (const d of details.slice(0, 4)) {
+    out.push(d);
+  }
+
+  if (cta) out.push(ensurePeriod(cta));
+  else out.push(ensurePeriod(`Visit ${brand} today`));
+
+  return unique(out).join("\n");
 }
 
 export async function POST(req) {
@@ -195,27 +123,18 @@ export async function POST(req) {
     const duration = pickDuration(body);
 
     const brand = s(body.brand) || "YOUR BRAND";
-    const offer = s(body.offer) || "YOUR OFFER";
+    const offer = s(body.offer);
+    const audience = s(body.audience);
     const cta = s(body.cta);
     const mustSay = s(body.mustSay);
-    const details = s(body.details || body.text);
-
-    const detailBits = buildDetailBits(details);
-
-    // stable seed so same intake -> consistent output per duration, but different across durations
-    const seedBase =
-      (brand.length * 7) +
-      (offer.length * 11) +
-      (cta.length * 13) +
-      (details.length * 17) +
-      (mustSay.length * 19);
+    const details = makeDetailBits(body.details || body.text);
 
     let script =
       duration === 15
-        ? make15({ brand, offer, cta, detailBits, seed: seedBase + 15 })
+        ? build15({ brand, offer, cta, details })
         : duration === 30
-        ? make30({ brand, offer, cta, detailBits, seed: seedBase + 30 })
-        : make60({ brand, offer, cta, detailBits, seed: seedBase + 60 });
+        ? build30({ brand, offer, audience, cta, details })
+        : build60({ brand, offer, audience, cta, details });
 
     script = stripLabelsEverywhere(script);
     script = ensureMustSayFinalLine(script, mustSay);
