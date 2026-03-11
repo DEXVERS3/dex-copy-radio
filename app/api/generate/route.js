@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V5]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V6]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -259,6 +259,11 @@ function buildContext(input) {
       "furniture",
       "delivery available",
       "sectionals",
+      "sofa",
+      "couch",
+      "recliner",
+      "living room",
+      "bedroom",
     ]),
     auto: containsAny(blob, [
       "car",
@@ -282,6 +287,18 @@ function buildContext(input) {
       "comedy",
     ]),
     loud: containsAny(blob, ["loud", "rowdy", "wild", "crazy", "party", "hype"]),
+    furniture: containsAny(blob, [
+      "furniture",
+      "sectional",
+      "sectionals",
+      "sofa",
+      "couch",
+      "recliner",
+      "mattress",
+      "bedroom",
+      "living room",
+      "dining room",
+    ]),
   };
 }
 
@@ -382,9 +399,9 @@ function buildBeat(type, input) {
 
     if (ctx.retail) {
       return pick([
-        "Funny how waiting around stops making sense",
-        "Sooner or later it catches up",
         "At some point the old setup is just in the way",
+        "Sooner or later the room is due",
+        "Once you see it, you cannot unsee it",
       ]);
     }
 
@@ -520,15 +537,6 @@ function lineIsWeekend(line) {
   return s(line).toLowerCase().includes("weekend");
 }
 
-function lineIsSoftFiller(line) {
-  const lower = s(line).toLowerCase();
-  return (
-    lower === "look… we have all been there" ||
-    lower === "you know how that goes" ||
-    lower === "you know the feeling"
-  );
-}
-
 function sameIdea(a, b) {
   const x = s(a).toLowerCase();
   const y = s(b).toLowerCase();
@@ -536,13 +544,16 @@ function sameIdea(a, b) {
   if (!x || !y) return false;
 
   const clusters = [
-    ["hunt for a deal", "waiting around stops making sense", "old setup is just in the way", "it catches up"],
-    ["you know the feeling", "you know how that goes", "look… we have all been there"],
+    ["hunt for a deal", "room is due", "old setup is just in the way", "once you see it, you cannot unsee it"],
     ["deliver", "delivery is handled"],
     ["sale", "percent off"],
   ];
 
-  return clusters.some((cluster) => cluster.some((term) => x.includes(term)) && cluster.some((term) => y.includes(term)));
+  return clusters.some(
+    (cluster) =>
+      cluster.some((term) => x.includes(term)) &&
+      cluster.some((term) => y.includes(term))
+  );
 }
 
 function canFollow(prev, next, brand) {
@@ -661,18 +672,28 @@ function buildCtaLine(input) {
   return s(input.cta) || s(input.brand);
 }
 
-function retailProblem() {
+function retailProblem(input) {
+  const ctx = buildContext(input);
+
+  if (ctx.furniture) {
+    return pick([
+      "Sooner or later the room is due",
+      "At some point the old couch has had its say",
+      "Once you see it, you cannot unsee it",
+    ]);
+  }
+
   return pick([
     "At some point the old setup is just in the way",
-    "Sooner or later you stop patching it and replace it",
-    "Funny how the room starts telling on itself",
+    "Sooner or later the room is due",
+    "Once you see it, you cannot unsee it",
   ]);
 }
 
 function retailAside() {
   return pick([
     "Look… we have all been there",
-    "That usually happens fast",
+    "That part happens fast",
   ]);
 }
 
@@ -720,7 +741,7 @@ function assembleRetailScript({ input, duration }) {
   const script = [situation];
 
   if (duration === 15) {
-    script.push(retailProblem());
+    script.push(retailProblem(input));
     if (offerLine) script.push(offerLine);
     if (deliveryLine) script.push(deliveryLine);
     script.push(retailClose(input.brand, cta));
@@ -728,16 +749,16 @@ function assembleRetailScript({ input, duration }) {
   }
 
   if (duration === 30) {
-    script.push(retailProblem());
+    script.push(retailProblem(input));
 
-    if (Math.random() > 0.55) {
+    if (Math.random() > 0.65) {
       script.push(retailAside());
     }
 
     if (offerLine) script.push(offerLine);
     if (deliveryLine) script.push(deliveryLine);
 
-    if (weekendLine && Math.random() > 0.6) {
+    if (weekendLine && Math.random() > 0.75) {
       script.push(weekendLine);
     }
 
@@ -745,9 +766,9 @@ function assembleRetailScript({ input, duration }) {
     return cleanupFlow(script, input.brand);
   }
 
-  script.push(retailProblem());
+  script.push(retailProblem(input));
 
-  if (Math.random() > 0.5) {
+  if (Math.random() > 0.7) {
     script.push(retailAside());
   }
 
@@ -756,7 +777,7 @@ function assembleRetailScript({ input, duration }) {
 
   if (extraDetail) {
     script.push(extraDetail);
-  } else if (weekendLine) {
+  } else if (weekendLine && Math.random() > 0.4) {
     script.push(weekendLine);
   }
 
