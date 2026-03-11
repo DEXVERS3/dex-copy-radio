@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V8]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V10]]";
+
+const TARGET_LINES = {
+  15: { min: 5, max: 7 },
+  30: { min: 9, max: 12 },
+  60: { min: 17, max: 20 },
+};
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -513,16 +519,6 @@ function lineMentionsBrand(line, brand) {
   return l.includes(b);
 }
 
-function lineIsExplanation(line) {
-  const lower = s(line).toLowerCase();
-  return (
-    lower.includes("which is why people end up at") ||
-    lower.includes("is why") ||
-    lower.includes("that is where") ||
-    lower.includes("that is why")
-  );
-}
-
 function lineIsOffer(line) {
   const lower = s(line).toLowerCase();
   return lower.includes("sale") || lower.includes("percent off");
@@ -540,12 +536,10 @@ function lineIsWeekend(line) {
 function lineIsRecognition(line) {
   const lower = s(line).toLowerCase();
   return (
-    lower.includes("we have all been there") ||
-    lower.includes("that part happens fast") ||
-    lower.includes("you know the feeling") ||
     lower.includes("that room has been asking for help") ||
     lower.includes("you can only look at that couch for so long") ||
     lower.includes("the whole room starts leaning on you") ||
+    lower.includes("that part happens fast") ||
     lower.includes("soon enough, the whole thing starts to look tired") ||
     lower.includes("you can feel it when the setup is done")
   );
@@ -576,10 +570,6 @@ function canFollow(prev, next, brand) {
     return false;
   }
 
-  if (lineIsExplanation(prev) && lineMentionsBrand(next, brand)) {
-    return false;
-  }
-
   if (sameIdea(prev, next)) {
     return false;
   }
@@ -605,32 +595,48 @@ function cleanupFlow(script, brand) {
   return uniqueLines(out);
 }
 
-function pickStoryBeats(count) {
-  return shuffle(STORY_BEATS).slice(0, count);
+function clampLines(script, duration, brand) {
+  const target = TARGET_LINES[duration];
+  const cleaned = cleanupFlow(script, brand);
+  return cleaned.slice(0, target.max);
+}
+
+function expandToTarget(baseLines, candidateLines, duration, brand) {
+  const target = TARGET_LINES[duration];
+  let out = clampLines(baseLines, duration, brand);
+
+  const candidates = uniqueLines(candidateLines).filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (out.length >= target.min) break;
+
+    const next = clampLines([...out, candidate], duration, brand);
+    if (next.length > out.length) {
+      out = next;
+    }
+  }
+
+  return out.slice(0, target.max);
 }
 
 function buildOfferLine(input) {
   return s(input.offer);
 }
 
-function buildDetailLines(input, max = 2) {
+function buildDetailLines(input, max = 8) {
   const rawDetails = uniqueLines(lines(input.details))
     .map(speakableDetail)
     .filter(Boolean)
     .filter((line) => !isWeakLine(line));
 
-  const out = [];
-  const used = new Set();
+  return rawDetails.slice(0, max);
+}
 
-  for (const detail of rawDetails) {
-    const key = detail.toLowerCase();
-    if (used.has(key)) continue;
-    used.add(key);
-    out.push(detail);
-    if (out.length >= max) break;
-  }
-
-  return out;
+function buildMustSayLines(input) {
+  return uniqueLines(lines(input.mustSay))
+    .map(speakableDetail)
+    .filter(Boolean)
+    .filter((line) => !isWeakLine(line));
 }
 
 function maybeFuseOfferAndDetail(offer, details) {
@@ -708,10 +714,55 @@ function retailRecognition(input) {
   ]);
 }
 
+function retailObservation(input) {
+  const ctx = buildContext(input);
+
+  if (ctx.furniture) {
+    return pick([
+      "One tired piece will do that to a room",
+      "The whole room changes when the right piece shows up",
+      "That is how one good replacement turns into a whole-room move",
+    ]);
+  }
+
+  return pick([
+    "That is when the whole thing starts to look dated",
+    "That is usually where the move gets made",
+    "That is how browsing turns serious",
+  ]);
+}
+
+function retailExpansion(input) {
+  const ctx = buildContext(input);
+
+  if (ctx.furniture) {
+    return pick([
+      "You walk in one day and the room gives itself away",
+      "That is when browsing turns into buying",
+      "Once the room feels tired, you stop arguing with it",
+      "That is usually how the whole thing starts",
+    ]);
+  }
+
+  return pick([
+    "Soon enough, browsing turns into a real plan",
+    "That is where the fix starts looking obvious",
+    "That is usually when the whole thing turns",
+  ]);
+}
+
 function retailSupportAfterOffer() {
   return pick([
     "And yes — they will deliver it",
     "And yes — delivery is handled",
+  ]);
+}
+
+function retailUrgency() {
+  return pick([
+    "This weekend only",
+    "This weekend is the move",
+    "That part does not last forever",
   ]);
 }
 
@@ -725,136 +776,224 @@ function retailClose(brand, cta) {
   return pick(closePool);
 }
 
-function pushIfValid(arr, line) {
-  const val = s(line);
-  if (val) arr.push(val);
+function buildRetailSupportBank(input) {
+  const ctx = buildContext(input);
+  const bank = [];
+
+  if (ctx.furniture) {
+    bank.push(
+      "One good sectional changes the whole room",
+      "That is how the room starts feeling right again",
+      "The right piece tends to solve more than one problem",
+      "That is what a real reset looks like",
+      "A room upgrade has a way of paying off fast"
+    );
+  } else {
+    bank.push(
+      "That is how the better setup starts",
+      "One strong move fixes a lot at once",
+      "That is usually the difference-maker"
+    );
+  }
+
+  return bank;
+}
+
+function buildGenericExpansionBank(input) {
+  const ctx = buildContext(input);
+  const bank = [];
+
+  if (ctx.mattress) {
+    bank.push(
+      "Funny how sleep gets your attention when it disappears",
+      "Your back usually votes first",
+      "That is where the smarter move starts"
+    );
+  } else if (ctx.auto) {
+    bank.push(
+      "That is when the small issue stops being small",
+      "Ignoring it does not usually make it cheaper",
+      "That part tends to catch up fast"
+    );
+  } else if (ctx.foodDrink) {
+    bank.push(
+      "That is usually when the night starts turning into a story",
+      "Some places just know how to keep it moving",
+      "That is where the energy changes"
+    );
+  } else {
+    bank.push(
+      "That is usually where the move gets made",
+      "That is when the idea starts looking obvious",
+      "That part tends to happen fast"
+    );
+  }
+
+  return bank;
 }
 
 function assembleRetailScript({ input, duration }) {
-  const situation = buildSituation(input);
+  const target = TARGET_LINES[duration];
   const offer = buildOfferLine(input);
-  const rawDetails = buildDetailLines(
-    input,
-    duration === 60 ? 4 : duration === 15 ? 1 : 2
-  );
-  const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, rawDetails);
+  const details = buildDetailLines(input, duration === 60 ? 10 : duration === 30 ? 6 : 3);
+  const mustSay = buildMustSayLines(input);
+  const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, details);
   const cta = buildCtaLine(input);
 
+  const setup = buildSituation(input);
+  const problem = retailProblem(input);
+  const recognition = retailRecognition(input);
+  const observation = retailObservation(input);
+  const expansion = retailExpansion(input);
   const deliveryLine =
     remainingDetails.find((line) => lineIsDelivery(line)) || retailSupportAfterOffer();
-
-  const weekendLine =
-    remainingDetails.find((line) => lineIsWeekend(line) && !lineIsDelivery(line)) || "";
-
-  const extraDetail =
-    remainingDetails.find(
-      (line) =>
-        !lineIsDelivery(line) &&
-        !lineIsWeekend(line) &&
-        !lineIsOffer(line)
-    ) || "";
-
-  const problemLine = retailProblem(input);
-  const recognitionLine = retailRecognition(input);
+  const urgencyLine =
+    remainingDetails.find((line) => lineIsWeekend(line) && !lineIsDelivery(line)) || retailUrgency();
   const closeLine = retailClose(input.brand, cta);
 
-  const script = [situation];
+  let base = [];
 
   if (duration === 15) {
-    pushIfValid(script, problemLine);
-    pushIfValid(script, offerLine);
-    pushIfValid(script, deliveryLine);
-    pushIfValid(script, closeLine);
-    return cleanupFlow(script, input.brand);
-  }
-
-  if (duration === 30) {
-    pushIfValid(script, problemLine);
-
-    if (!sameIdea(situation, recognitionLine)) {
-      pushIfValid(script, recognitionLine);
-    }
-
-    pushIfValid(script, offerLine);
-    pushIfValid(script, deliveryLine);
-    pushIfValid(script, closeLine);
-
-    return cleanupFlow(script, input.brand);
-  }
-
-  pushIfValid(script, problemLine);
-
-  if (!sameIdea(problemLine, recognitionLine) && !sameIdea(situation, recognitionLine)) {
-    pushIfValid(script, recognitionLine);
-  }
-
-  pushIfValid(script, offerLine);
-  pushIfValid(script, deliveryLine);
-
-  if (extraDetail) {
-    pushIfValid(script, extraDetail);
-  } else if (weekendLine) {
-    pushIfValid(script, weekendLine);
-  } else {
-    pushIfValid(script, "This weekend only");
-  }
-
-  pushIfValid(script, closeLine);
-
-  let cleaned = cleanupFlow(script, input.brand);
-
-  if (cleaned.length < 6) {
-    const forced = [
-      situation,
-      problemLine,
-      recognitionLine,
+    base = [
+      setup,
+      problem,
       offerLine,
       deliveryLine,
-      weekendLine || "This weekend only",
       closeLine,
     ];
-    cleaned = cleanupFlow(forced, input.brand);
+  } else if (duration === 30) {
+    base = [
+      setup,
+      problem,
+      recognition,
+      observation,
+      offerLine,
+      deliveryLine,
+      ...remainingDetails.slice(0, 2),
+      ...mustSay.slice(0, 1),
+      urgencyLine,
+      closeLine,
+    ];
+  } else {
+    base = [
+      setup,
+      problem,
+      recognition,
+      observation,
+      expansion,
+      offerLine,
+      deliveryLine,
+      ...remainingDetails.slice(0, 5),
+      ...mustSay.slice(0, 3),
+      urgencyLine,
+      closeLine,
+    ];
   }
 
-  return cleaned;
+  const candidateBank = shuffle([
+    ...buildRetailSupportBank(input),
+    ...remainingDetails.slice(duration === 60 ? 5 : 2),
+    ...mustSay.slice(duration === 60 ? 3 : 1),
+    retailRecognition(input),
+    retailObservation(input),
+    retailExpansion(input),
+    retailUrgency(),
+    "That is where the better room starts",
+    "That is where the weekend starts paying off",
+    "The right move tends to show up all at once",
+    "One good decision changes the room in a hurry",
+  ]);
+
+  let out = expandToTarget(base, candidateBank, duration, input.brand);
+
+  if (out.length < target.min) {
+    out = expandToTarget(
+      out,
+      [
+        "That is where the room starts turning around",
+        "One better piece changes the whole setup",
+        "That is how the right move starts looking easy",
+        "That is usually when people stop waiting",
+        "That is where the smarter buy shows up",
+      ],
+      duration,
+      input.brand
+    );
+  }
+
+  return out.slice(0, target.max);
 }
 
 function assembleGenericScript({ input, duration }) {
+  const target = TARGET_LINES[duration];
   const situation = buildSituation(input);
-  const beatCount = duration === 15 ? 2 : duration === 60 ? 4 : 3;
-  const beatTypes = pickStoryBeats(beatCount);
+  const beatCount = duration === 15 ? 2 : duration === 30 ? 4 : 6;
+  const beatTypes = shuffle(STORY_BEATS).slice(0, beatCount);
   const beats = beatTypes.map((b) => buildBeat(b, input)).filter(Boolean);
 
   const offer = buildOfferLine(input);
-  const rawDetails = buildDetailLines(
-    input,
-    duration === 60 ? 4 : duration === 15 ? 1 : 2
-  );
-  const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, rawDetails);
+  const details = buildDetailLines(input, duration === 60 ? 8 : duration === 30 ? 4 : 2);
+  const mustSay = buildMustSayLines(input);
+  const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, details);
   const cta = buildCtaLine(input);
 
-  const script = [situation];
+  let base = [];
 
-  if (beats[0]) script.push(beats[0]);
-  if (beats[1]) script.push(beats[1]);
-
-  if (offerLine) script.push(offerLine);
-  if (remainingDetails[0]) script.push(remainingDetails[0]);
-
-  if (duration === 60) {
-    if (beats[2]) script.push(beats[2]);
-    if (remainingDetails[1]) script.push(remainingDetails[1]);
-    if (beats[3]) script.push(beats[3]);
-    if (remainingDetails[2]) script.push(remainingDetails[2]);
-    if (remainingDetails[3]) script.push(remainingDetails[3]);
+  if (duration === 15) {
+    base = [
+      situation,
+      ...beats.slice(0, 2),
+      offerLine,
+      ...remainingDetails.slice(0, 1),
+      cta,
+    ];
   } else if (duration === 30) {
-    if (beats[2]) script.push(beats[2]);
-    if (remainingDetails[1]) script.push(remainingDetails[1]);
+    base = [
+      situation,
+      ...beats.slice(0, 4),
+      offerLine,
+      ...remainingDetails.slice(0, 2),
+      ...mustSay.slice(0, 1),
+      cta,
+    ];
+  } else {
+    base = [
+      situation,
+      ...beats.slice(0, 6),
+      offerLine,
+      ...remainingDetails.slice(0, 4),
+      ...mustSay.slice(0, 2),
+      cta,
+    ];
   }
 
-  if (cta) script.push(cta);
+  const candidateBank = shuffle([
+    ...remainingDetails.slice(duration === 60 ? 4 : 2),
+    ...mustSay.slice(duration === 60 ? 2 : 1),
+    ...buildGenericExpansionBank(input),
+    buildBeat("reaction", input),
+    buildBeat("problem", input),
+    buildBeat("aside", input),
+    buildBeat("reinforcement", input),
+    buildBeat("punchline", input),
+  ]);
 
-  return cleanupFlow(script, input.brand);
+  let out = expandToTarget(base, candidateBank, duration, input.brand);
+
+  if (out.length < target.min) {
+    out = expandToTarget(
+      out,
+      [
+        "That is where the smarter move starts",
+        "That usually gets the point across",
+        "That is when the better option shows up",
+      ],
+      duration,
+      input.brand
+    );
+  }
+
+  return out.slice(0, target.max);
 }
 
 function assembleScript({ input, duration }) {
@@ -911,7 +1050,12 @@ export async function POST(req) {
     return NextResponse.json({
       ok: true,
       output: script,
-      meta: { duration, version: VERSION },
+      meta: {
+        duration,
+        version: VERSION,
+        targetLines: TARGET_LINES[duration],
+        actualLines: lines(script).length,
+      },
     });
   } catch {
     return NextResponse.json(
