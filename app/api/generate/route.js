@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V4]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V5]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -314,9 +314,9 @@ function buildSituation(input) {
 
   if (ctx.retail) {
     return pick([
-      "You know the moment when a good idea suddenly shows up",
       "Sooner or later the weekend turns into a hunt for a deal",
       "Funny how the right move usually appears when you need it",
+      "You know the moment when a good idea suddenly shows up",
     ]);
   }
 
@@ -382,9 +382,9 @@ function buildBeat(type, input) {
 
     if (ctx.retail) {
       return pick([
-        "Sooner or later it turns into a hunt for a deal",
         "Funny how waiting around stops making sense",
-        "At some point you either keep staring at it or you replace it",
+        "Sooner or later it catches up",
+        "At some point the old setup is just in the way",
       ]);
     }
 
@@ -429,9 +429,9 @@ function buildBeat(type, input) {
 
     if (ctx.retail) {
       return pick([
-        "Yeah… that will do it",
-        "Now that makes sense",
         "That solves that",
+        "Now that makes sense",
+        "Yeah… that will do it",
       ]);
     }
 
@@ -476,13 +476,16 @@ function isWeakLine(line) {
 
   return (
     lower === "delivery available" ||
-    lower === "weekend only" ||
     lower === "details" ||
     lower === "offer" ||
     lower === "cta" ||
     lower === "tag" ||
     lower === "anyway…" ||
-    lower === "anyway..."
+    lower === "anyway..." ||
+    lower === "you know exactly what i mean" ||
+    lower === "right about now it starts making sense" ||
+    lower === "that usually does the trick" ||
+    lower === "that is the idea"
   );
 }
 
@@ -513,13 +516,33 @@ function lineIsDelivery(line) {
   return lower.includes("deliver");
 }
 
+function lineIsWeekend(line) {
+  return s(line).toLowerCase().includes("weekend");
+}
+
 function lineIsSoftFiller(line) {
   const lower = s(line).toLowerCase();
   return (
-    lower === "you know exactly what i mean" ||
-    lower === "that is the idea" ||
-    lower === "that usually does the trick"
+    lower === "look… we have all been there" ||
+    lower === "you know how that goes" ||
+    lower === "you know the feeling"
   );
+}
+
+function sameIdea(a, b) {
+  const x = s(a).toLowerCase();
+  const y = s(b).toLowerCase();
+
+  if (!x || !y) return false;
+
+  const clusters = [
+    ["hunt for a deal", "waiting around stops making sense", "old setup is just in the way", "it catches up"],
+    ["you know the feeling", "you know how that goes", "look… we have all been there"],
+    ["deliver", "delivery is handled"],
+    ["sale", "percent off"],
+  ];
+
+  return clusters.some((cluster) => cluster.some((term) => x.includes(term)) && cluster.some((term) => y.includes(term)));
 }
 
 function canFollow(prev, next, brand) {
@@ -543,6 +566,10 @@ function canFollow(prev, next, brand) {
   }
 
   if (lineIsDelivery(prev) && lineIsDelivery(next)) {
+    return false;
+  }
+
+  if (sameIdea(prev, next)) {
     return false;
   }
 
@@ -634,26 +661,18 @@ function buildCtaLine(input) {
   return s(input.cta) || s(input.brand);
 }
 
-function retailReaction() {
-  return pick([
-    "You know the feeling",
-    "Yeah… there it is",
-    "Right about now it starts making sense",
-  ]);
-}
-
 function retailProblem() {
   return pick([
-    "Sooner or later it turns into a hunt for a deal",
-    "At some point you either keep staring at it or you replace it",
-    "Funny how waiting around stops making sense",
+    "At some point the old setup is just in the way",
+    "Sooner or later you stop patching it and replace it",
+    "Funny how the room starts telling on itself",
   ]);
 }
 
 function retailAside() {
   return pick([
     "Look… we have all been there",
-    "You know how that goes",
+    "That usually happens fast",
   ]);
 }
 
@@ -684,18 +703,26 @@ function assembleRetailScript({ input, duration }) {
   const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, rawDetails);
   const cta = buildCtaLine(input);
 
-  const supportDelivery =
+  const deliveryLine =
     remainingDetails.find((line) => lineIsDelivery(line)) || retailSupportAfterOffer();
 
-  const supportOther = remainingDetails.find((line) => !lineIsDelivery(line)) || "";
-  const weekender = remainingDetails.find((line) => line.toLowerCase().includes("weekend")) || "";
+  const weekendLine =
+    remainingDetails.find((line) => lineIsWeekend(line) && !lineIsDelivery(line)) || "";
+
+  const extraDetail =
+    remainingDetails.find(
+      (line) =>
+        !lineIsDelivery(line) &&
+        !lineIsWeekend(line) &&
+        !lineIsOffer(line)
+    ) || "";
 
   const script = [situation];
 
   if (duration === 15) {
-    script.push(retailReaction());
+    script.push(retailProblem());
     if (offerLine) script.push(offerLine);
-    if (supportDelivery) script.push(supportDelivery);
+    if (deliveryLine) script.push(deliveryLine);
     script.push(retailClose(input.brand, cta));
     return cleanupFlow(script, input.brand);
   }
@@ -703,40 +730,38 @@ function assembleRetailScript({ input, duration }) {
   if (duration === 30) {
     script.push(retailProblem());
 
-    if (Math.random() > 0.45) {
+    if (Math.random() > 0.55) {
       script.push(retailAside());
     }
 
     if (offerLine) script.push(offerLine);
-    if (supportDelivery) script.push(supportDelivery);
+    if (deliveryLine) script.push(deliveryLine);
 
-    if (supportOther && !lineIsDelivery(supportOther) && !lineIsOffer(supportOther)) {
-      script.push(supportOther);
+    if (weekendLine && Math.random() > 0.6) {
+      script.push(weekendLine);
     }
 
     script.push(retailClose(input.brand, cta));
     return cleanupFlow(script, input.brand);
   }
 
-  script.push(retailReaction());
   script.push(retailProblem());
 
-  if (Math.random() > 0.35) {
+  if (Math.random() > 0.5) {
     script.push(retailAside());
   }
 
   if (offerLine) script.push(offerLine);
-  if (supportDelivery) script.push(supportDelivery);
+  if (deliveryLine) script.push(deliveryLine);
 
-  if (supportOther && !lineIsDelivery(supportOther) && !lineIsOffer(supportOther)) {
-    script.push(supportOther);
-  }
-
-  if (weekender && !lineIsOffer(weekender) && !lineIsDelivery(weekender)) {
-    script.push(weekender);
+  if (extraDetail) {
+    script.push(extraDetail);
+  } else if (weekendLine) {
+    script.push(weekendLine);
   }
 
   script.push(retailClose(input.brand, cta));
+
   return cleanupFlow(script, input.brand);
 }
 
