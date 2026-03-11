@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-const VERSION = "[[DEX_RADIO_V3_NEUTRAL_COPY]]";
+
+const VERSION = "[[DEX_RADIO_STORY_ENGINE]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -11,10 +12,6 @@ function pickDuration(body) {
   const d = body?.mode ?? body?.duration ?? body?.seconds;
   const n = Number(d);
   if (n === 15 || n === 30 || n === 60) return n;
-  if (typeof d === "string") {
-    const m = d.match(/\b(15|30|60)\b/);
-    if (m) return Number(m[1]);
-  }
   return 30;
 }
 
@@ -25,97 +22,104 @@ function lines(text) {
     .filter(Boolean);
 }
 
-function clean(text) {
-  return s(text).replace(/\s+/g, " ").trim();
-}
-
 function ensurePeriod(text) {
-  const t = clean(text);
+  const t = s(text);
   if (!t) return "";
   return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
-function stripLabelsEverywhere(text) {
-  const raw = (text || "").split("\n");
-  const out = [];
-
-  for (let line of raw) {
-    if (/^\s*(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS|AUDIENCE|TONE)\s*:/i.test(line)) continue;
-    line = line.replace(/\b(DEX\s*RADIO|BRAND|OFFER|CTA|MUST-?SAY|DETAILS|AUDIENCE|TONE)\s*:\s*/gi, "");
-    line = line.replace(/\s{2,}/g, " ").trim();
-    if (line) out.push(line);
-  }
-
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
-
-function ensureMustSayFinalLine(script, mustSay) {
+function ensureMustSay(script, mustSay) {
   const ms = s(mustSay);
-  if (!ms) return script.trim();
+  if (!ms) return script;
 
-  const esc = ms.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const re = new RegExp(esc, "gi");
-  let out = (script || "").replace(re, "").replace(/\n{3,}/g, "\n\n").trim();
-
-  return `${out}\n${ms}`.trim();
+  return `${script}\n${ms}`;
 }
 
-function makeDetailBits(details) {
-  return lines(details).map(ensurePeriod).filter(Boolean);
+/* ------------------------
+   STORY GENERATOR
+-------------------------*/
+
+function act1Scene(brand, audience) {
+  const options = [
+    `You know that moment when you realize the day just got better`,
+    `Some days just need a place to land`,
+    `Every city has that one spot`,
+    `Here’s how a good day usually starts`,
+  ];
+
+  const base = options[Math.floor(Math.random() * options.length)];
+
+  if (audience) return `${base} for ${audience}`;
+  return base;
 }
 
-function unique(arr) {
-  return [...new Set(arr.filter(Boolean))];
+function act2Turn(offer, details) {
+  const d = lines(details)[0];
+
+  if (offer && d) return `${offer}. ${d}`;
+  if (offer) return offer;
+  if (d) return d;
+
+  return "That’s where things get interesting";
 }
 
-function build15({ brand, offer, cta, details }) {
-  const out = [];
+function act3Resolution(brand, cta) {
+  if (cta) return cta;
 
-  if (offer) out.push(ensurePeriod(`${brand} has ${offer}`));
-  else out.push(ensurePeriod(`${brand}`));
+  return `That’s ${brand}`;
+}
 
-  if (details[0]) out.push(details[0]);
+/* ------------------------
+   LENGTH STRUCTURES
+-------------------------*/
 
-  if (cta) out.push(ensurePeriod(cta));
-  else out.push(ensurePeriod(`Visit ${brand} today`));
+function build15({ brand, offer, audience, cta, details }) {
+  const a1 = act1Scene(brand, audience);
+  const a2 = act2Turn(offer, details);
+  const a3 = act3Resolution(brand, cta);
 
-  return unique(out).join("\n");
+  return [a1, a2, a3].map(ensurePeriod).join("\n");
 }
 
 function build30({ brand, offer, audience, cta, details }) {
-  const out = [];
+  const a1 = act1Scene(brand, audience);
+  const a2 = act2Turn(offer, details);
+  const a3 = act3Resolution(brand, cta);
 
-  if (offer) out.push(ensurePeriod(`${brand} has ${offer}`));
-  else out.push(ensurePeriod(`${brand} is on now`));
+  const extra = lines(details)[1];
 
-  if (audience) out.push(ensurePeriod(`For ${audience}`));
+  const out = [a1];
 
-  if (details[0]) out.push(details[0]);
-  if (details[1]) out.push(details[1]);
+  if (a2) out.push(a2);
+  if (extra) out.push(extra);
+  out.push(a3);
 
-  if (cta) out.push(ensurePeriod(cta));
-  else out.push(ensurePeriod(`Get to ${brand} today`));
-
-  return unique(out).join("\n");
+  return out.map(ensurePeriod).join("\n");
 }
 
 function build60({ brand, offer, audience, cta, details }) {
-  const out = [];
+  const d = lines(details);
 
-  if (offer) out.push(ensurePeriod(`At ${brand}, here is the offer: ${offer}`));
-  else out.push(ensurePeriod(`${brand} is ready`));
+  const a1 = act1Scene(brand, audience);
+  const a2 = act2Turn(offer, details);
+  const a3 = act3Resolution(brand, cta);
 
-  if (audience) out.push(ensurePeriod(`Built for ${audience}`));
+  const out = [a1];
 
-  for (const d of details.slice(0, 4)) {
-    out.push(d);
+  if (a2) out.push(a2);
+
+  for (let i = 0; i < Math.min(d.length, 3); i++) {
+    out.push(d[i]);
   }
 
-  if (cta) out.push(ensurePeriod(cta));
-  else out.push(ensurePeriod(`Visit ${brand} today`));
+  out.push(a3);
 
-  return unique(out).join("\n");
+  return out.map(ensurePeriod).join("\n");
 }
+
+/* ------------------------
+   API ROUTE
+-------------------------*/
 
 export async function POST(req) {
   try {
@@ -127,24 +131,26 @@ export async function POST(req) {
     const audience = s(body.audience);
     const cta = s(body.cta);
     const mustSay = s(body.mustSay);
-    const details = makeDetailBits(body.details || body.text);
+    const details = s(body.details || body.text);
 
     let script =
       duration === 15
-        ? build15({ brand, offer, cta, details })
+        ? build15({ brand, offer, audience, cta, details })
         : duration === 30
         ? build30({ brand, offer, audience, cta, details })
         : build60({ brand, offer, audience, cta, details });
 
-    script = stripLabelsEverywhere(script);
-    script = ensureMustSayFinalLine(script, mustSay);
+    script = ensureMustSay(script, mustSay);
 
     return NextResponse.json({
       ok: true,
-      output: `${VERSION}\n${script}`.trim(),
+      output: script,
       meta: { duration, version: VERSION },
     });
   } catch {
-    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: "Server error" },
+      { status: 500 }
+    );
   }
 }
