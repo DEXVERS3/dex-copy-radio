@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V6]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V7]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -537,23 +537,37 @@ function lineIsWeekend(line) {
   return s(line).toLowerCase().includes("weekend");
 }
 
-function sameIdea(a, b) {
-  const x = s(a).toLowerCase();
-  const y = s(b).toLowerCase();
-
-  if (!x || !y) return false;
-
-  const clusters = [
-    ["hunt for a deal", "room is due", "old setup is just in the way", "once you see it, you cannot unsee it"],
-    ["deliver", "delivery is handled"],
-    ["sale", "percent off"],
-  ];
-
-  return clusters.some(
-    (cluster) =>
-      cluster.some((term) => x.includes(term)) &&
-      cluster.some((term) => y.includes(term))
+function lineIsRecognition(line) {
+  const lower = s(line).toLowerCase();
+  return (
+    lower.includes("we have all been there") ||
+    lower.includes("that part happens fast") ||
+    lower.includes("you know the feeling")
   );
+}
+
+function lineIsRoomProblem(line) {
+  const lower = s(line).toLowerCase();
+  return (
+    lower.includes("room is due") ||
+    lower.includes("old couch has had its say") ||
+    lower.includes("old setup is just in the way") ||
+    lower.includes("once you see it, you cannot unsee it")
+  );
+}
+
+function sameIdea(prev, next) {
+  const a = s(prev).toLowerCase();
+  const b = s(next).toLowerCase();
+
+  if (!a || !b) return false;
+
+  if (lineIsDelivery(prev) && lineIsDelivery(next)) return true;
+  if (lineIsOffer(prev) && lineIsOffer(next)) return true;
+
+  if (lineIsRecognition(prev) && lineIsRecognition(next)) return true;
+
+  return false;
 }
 
 function canFollow(prev, next, brand) {
@@ -569,14 +583,6 @@ function canFollow(prev, next, brand) {
   }
 
   if (lineIsExplanation(prev) && lineMentionsBrand(next, brand)) {
-    return false;
-  }
-
-  if (lineIsOffer(prev) && lineIsOffer(next)) {
-    return false;
-  }
-
-  if (lineIsDelivery(prev) && lineIsDelivery(next)) {
     return false;
   }
 
@@ -690,10 +696,11 @@ function retailProblem(input) {
   ]);
 }
 
-function retailAside() {
+function retailRecognition() {
   return pick([
     "Look… we have all been there",
     "That part happens fast",
+    "You know the feeling",
   ]);
 }
 
@@ -712,6 +719,11 @@ function retailClose(brand, cta) {
   ]).filter(Boolean);
 
   return pick(closePool);
+}
+
+function pushIfValid(arr, line) {
+  const val = s(line);
+  if (val) arr.push(val);
 }
 
 function assembleRetailScript({ input, duration }) {
@@ -738,52 +750,72 @@ function assembleRetailScript({ input, duration }) {
         !lineIsOffer(line)
     ) || "";
 
+  const problemLine = retailProblem(input);
+  const recognitionLine = retailRecognition();
+  const closeLine = retailClose(input.brand, cta);
+
   const script = [situation];
 
   if (duration === 15) {
-    script.push(retailProblem(input));
-    if (offerLine) script.push(offerLine);
-    if (deliveryLine) script.push(deliveryLine);
-    script.push(retailClose(input.brand, cta));
+    pushIfValid(script, problemLine);
+    pushIfValid(script, offerLine);
+    pushIfValid(script, deliveryLine);
+    pushIfValid(script, closeLine);
     return cleanupFlow(script, input.brand);
   }
 
   if (duration === 30) {
-    script.push(retailProblem(input));
+    pushIfValid(script, problemLine);
 
-    if (Math.random() > 0.65) {
-      script.push(retailAside());
+    if (!sameIdea(situation, recognitionLine)) {
+      pushIfValid(script, recognitionLine);
     }
 
-    if (offerLine) script.push(offerLine);
-    if (deliveryLine) script.push(deliveryLine);
+    pushIfValid(script, offerLine);
+    pushIfValid(script, deliveryLine);
+    pushIfValid(script, closeLine);
 
-    if (weekendLine && Math.random() > 0.75) {
-      script.push(weekendLine);
-    }
-
-    script.push(retailClose(input.brand, cta));
     return cleanupFlow(script, input.brand);
   }
 
-  script.push(retailProblem(input));
+  // :60 must carry a fuller shape.
+  // setup → problem → recognition → offer → delivery → urgency/detail → close
+  pushIfValid(script, problemLine);
 
-  if (Math.random() > 0.7) {
-    script.push(retailAside());
+  if (!sameIdea(problemLine, recognitionLine) && !sameIdea(situation, recognitionLine)) {
+    pushIfValid(script, recognitionLine);
   }
 
-  if (offerLine) script.push(offerLine);
-  if (deliveryLine) script.push(deliveryLine);
+  pushIfValid(script, offerLine);
+  pushIfValid(script, deliveryLine);
 
   if (extraDetail) {
-    script.push(extraDetail);
-  } else if (weekendLine && Math.random() > 0.4) {
-    script.push(weekendLine);
+    pushIfValid(script, extraDetail);
+  } else if (weekendLine) {
+    pushIfValid(script, weekendLine);
+  } else {
+    pushIfValid(script, "This weekend only");
   }
 
-  script.push(retailClose(input.brand, cta));
+  pushIfValid(script, closeLine);
 
-  return cleanupFlow(script, input.brand);
+  let cleaned = cleanupFlow(script, input.brand);
+
+  // Safety net: if :60 collapses below 6 lines, force one extra middle line.
+  if (cleaned.length < 6) {
+    const forced = [
+      situation,
+      problemLine,
+      recognitionLine,
+      offerLine,
+      deliveryLine,
+      weekendLine || "This weekend only",
+      closeLine,
+    ];
+    cleaned = cleanupFlow(forced, input.brand);
+  }
+
+  return cleaned;
 }
 
 function assembleGenericScript({ input, duration }) {
