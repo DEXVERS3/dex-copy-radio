@@ -31,13 +31,15 @@ function ensurePeriod(text) {
 function uniqueLines(arr) {
   const seen = new Set();
   const out = [];
+
   for (const item of arr) {
-    const key = s(item).toLowerCase();
-    if (!key) continue;
-    if (seen.has(key)) continue;
+    const val = s(item);
+    const key = val.toLowerCase();
+    if (!val || seen.has(key)) continue;
     seen.add(key);
-    out.push(s(item));
+    out.push(val);
   }
+
   return out;
 }
 
@@ -80,11 +82,13 @@ function numberToWords(n) {
   if (!Number.isFinite(num)) return String(n);
 
   if (num < 20) return SMALL[num];
+
   if (num < 100) {
     const tens = Math.floor(num / 10) * 10;
     const rest = num % 10;
     return rest ? `${TENS[tens]}-${SMALL[rest]}` : TENS[tens];
   }
+
   if (num < 1000) {
     const hundreds = Math.floor(num / 100);
     const rest = num % 100;
@@ -92,6 +96,7 @@ function numberToWords(n) {
       ? `${SMALL[hundreds]} hundred ${numberToWords(rest)}`
       : `${SMALL[hundreds]} hundred`;
   }
+
   if (num < 10000) {
     const thousands = Math.floor(num / 1000);
     const rest = num % 1000;
@@ -126,33 +131,39 @@ function formatWebsiteDomain(domain) {
 function formatBroadcastCopy(text) {
   let out = s(text);
 
-  out = out.replace(/\b((?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)\b/g, (_, domain) => {
-    const cleaned = domain.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
-    return formatWebsiteDomain(cleaned);
-  });
+  out = out.replace(
+    /\b((?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)\b/g,
+    function (_, domain) {
+      const cleaned = domain.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
+      return formatWebsiteDomain(cleaned);
+    }
+  );
 
-  out = out.replace(/\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g, (_, a, b, c) => {
-    return `${digitStringToWords(a)}, ${digitStringToWords(b)}, ${digitStringToWords(c)}`;
-  });
+  out = out.replace(
+    /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g,
+    function (_, a, b, c) {
+      return `${digitStringToWords(a)}, ${digitStringToWords(b)}, ${digitStringToWords(c)}`;
+    }
+  );
 
-  out = out.replace(/\$([0-9]+)\.([0-9]{2})\b/g, (_, dollars, cents) => {
+  out = out.replace(/\$([0-9]+)\.([0-9]{2})\b/g, function (_, dollars, cents) {
     return `${numberToWords(Number(dollars))} dollars and ${numberToWords(Number(cents))} cents`;
   });
 
-  out = out.replace(/\$([0-9]+)\b/g, (_, dollars) => {
+  out = out.replace(/\$([0-9]+)\b/g, function (_, dollars) {
     const d = Number(dollars);
     return d === 1 ? "one dollar" : `${numberToWords(d)} dollars`;
   });
 
-  out = out.replace(/\b([0-9]+)%\b/g, (_, num) => {
+  out = out.replace(/\b([0-9]+)%\b/g, function (_, num) {
     return `${numberToWords(Number(num))} percent`;
   });
 
-  out = out.replace(/\b([0-9]+)-for-([0-9]+)\b/gi, (_, a, b) => {
+  out = out.replace(/\b([0-9]+)-for-([0-9]+)\b/gi, function (_, a, b) {
     return `${numberToWords(Number(a))} for ${numberToWords(Number(b))}`;
   });
 
-  out = out.replace(/\b([0-9]{1,2}):([0-9]{2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, (_, h, m, ap) => {
+  out = out.replace(/\b([0-9]{1,2}):([0-9]{2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, function (_, h, m, ap) {
     const hour = numberToWords(Number(h));
     const minuteNum = Number(m);
     const minute =
@@ -165,7 +176,7 @@ function formatBroadcastCopy(text) {
     return `${hour}${minute}${suffix}`;
   });
 
-  out = out.replace(/\b([0-9]{1,2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, (_, h, ap) => {
+  out = out.replace(/\b([0-9]{1,2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, function (_, h, ap) {
     const suffix = /^a/i.test(ap) ? "a m" : "p m";
     return `${numberToWords(Number(h))} ${suffix}`;
   });
@@ -179,39 +190,99 @@ function formatBroadcastCopy(text) {
 
 function containsAny(text, words) {
   const hay = s(text).toLowerCase();
-  return words.some((w) => hay.includes(w));
+  return words.some(function (w) {
+    return hay.includes(w);
+  });
 }
 
-function buildContext({ brand, offer, audience, details, tone }) {
-  const blob = [brand, offer, audience, details, tone].filter(Boolean).join(" ").toLowerCase();
+function buildContext(input) {
+  const blob = [
+    input.brand,
+    input.offer,
+    input.audience,
+    input.details,
+    input.tone,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
   return {
     sports: containsAny(blob, [
-      "eagles", "football", "nfl", "game", "gameday", "sports bar", "sunday ticket",
-      "kickoff", "birds", "cowboys", "philly", "tailgate", "touchdown"
+      "eagles",
+      "football",
+      "nfl",
+      "game",
+      "gameday",
+      "sports bar",
+      "sunday ticket",
+      "kickoff",
+      "birds",
+      "cowboys",
+      "philly",
+      "tailgate",
+      "touchdown",
     ]),
     foodDrink: containsAny(blob, [
-      "mimosa", "cider", "beer", "bar", "burger", "wings", "brunch", "drink", "cocktail", "happy hour"
+      "mimosa",
+      "cider",
+      "beer",
+      "bar",
+      "burger",
+      "wings",
+      "brunch",
+      "drink",
+      "cocktail",
+      "happy hour",
     ]),
     auto: containsAny(blob, [
-      "car", "truck", "lease", "dealer", "dealership", "oil", "service", "tires", "trade", "auto"
+      "car",
+      "truck",
+      "lease",
+      "dealer",
+      "dealership",
+      "oil",
+      "service",
+      "tires",
+      "trade",
+      "auto",
     ]),
     mattress: containsAny(blob, [
-      "mattress", "sleep", "back relief", "back pain", "bed", "pillow", "spine", "couch"
+      "mattress",
+      "sleep",
+      "back relief",
+      "back pain",
+      "bed",
+      "pillow",
+      "spine",
+      "couch",
     ]),
     retail: containsAny(blob, [
-      "sale", "clearance", "weekend sale", "percent off", "discount", "shop", "store", "furniture"
+      "sale",
+      "clearance",
+      "weekend sale",
+      "percent off",
+      "discount",
+      "shop",
+      "store",
+      "furniture",
     ]),
     event: containsAny(blob, [
-      "concert", "show", "tickets", "event", "festival", "live music", "comedy"
+      "concert",
+      "show",
+      "tickets",
+      "event",
+      "festival",
+      "live music",
+      "comedy",
     ]),
     loud: containsAny(blob, ["loud", "rowdy", "wild", "crazy", "party", "hype"]),
   };
 }
 
-function pickScenario({ brand, offer, audience, details, tone }) {
-  const ctx = buildContext({ brand, offer, audience, details, tone });
-  const d = lines(details);
+function pickScenario(input) {
+  const ctx = buildContext(input);
+  const d = lines(input.details);
 
   if (ctx.mattress) {
     return [
@@ -289,43 +360,44 @@ function buildAct1(input) {
   return options[Math.floor(Math.random() * options.length)];
 }
 
-function buildAct2({ brand, offer, details }) {
-  const d = uniqueLines(lines(details));
-
+function buildAct2(input) {
+  const d = uniqueLines(lines(input.details));
   const out = [];
 
-  if (offer) out.push(offer);
+  if (input.offer) out.push(input.offer);
 
   for (const line of d.slice(0, 3)) {
-    if (offer && s(line).toLowerCase() === s(offer).toLowerCase()) continue;
+    if (input.offer && s(line).toLowerCase() === s(input.offer).toLowerCase()) continue;
     out.push(line);
   }
 
-  if (!out.length && brand) {
-    out.push(`That is why people end up at ${brand}`);
+  if (!out.length && input.brand) {
+    out.push(`That is why people end up at ${input.brand}`);
   }
 
   return uniqueLines(out);
 }
 
-function buildAct3({ brand, cta, mustSay, details }) {
-  const d = uniqueLines(lines(details));
+function buildAct3(input) {
+  const d = uniqueLines(lines(input.details));
   const out = [];
 
-  if (cta) {
-    out.push(cta);
-  } else if (brand) {
-    out.push(`That is ${brand}`);
+  const lastDetail = d.length ? d[d.length - 1] : "";
+
+  if (
+    lastDetail &&
+    (/[!?]$/.test(lastDetail) || lastDetail === lastDetail.toUpperCase())
+  ) {
+    out.push(lastDetail);
   }
 
-  const lastDetail = d[d.length - 1];
-  if (lastDetail && !out.some((x) => s(x).toLowerCase() === s(lastDetail).toLowerCase())) {
-    if (/[!?]$/.test(lastDetail) || lastDetail === lastDetail.toUpperCase()) {
-      out.unshift(lastDetail);
-    }
+  if (input.cta) {
+    out.push(input.cta);
+  } else if (input.brand) {
+    out.push(`That is ${input.brand}`);
   }
 
-  if (mustSay) out.push(mustSay);
+  if (input.mustSay) out.push(input.mustSay);
 
   return uniqueLines(out);
 }
@@ -343,7 +415,9 @@ function build30(input) {
   const act2 = buildAct2(input).slice(0, 2);
   const act3 = buildAct3(input).slice(0, 2);
 
-  return uniqueLines([act1, ...act2, ...act3]).map(ensurePeriod).join("\n");
+  return uniqueLines([act1].concat(act2, act3))
+    .map(ensurePeriod)
+    .join("\n");
 }
 
 function build60(input) {
@@ -351,7 +425,9 @@ function build60(input) {
   const act2 = buildAct2(input).slice(0, 3);
   const act3 = buildAct3(input).slice(0, 3);
 
-  return uniqueLines([act1, ...act2, ...act3]).map(ensurePeriod).join("\n");
+  return uniqueLines([act1].concat(act2, act3))
+    .map(ensurePeriod)
+    .join("\n");
 }
 
 export async function POST(req) {
@@ -384,9 +460,6 @@ export async function POST(req) {
       meta: { duration, version: VERSION },
     });
   } catch {
-    return NextResponse.json(
-      { ok: false, error: "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
   }
-}v
+}
