@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V2]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V3]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -160,18 +160,21 @@ function formatBroadcastCopy(text) {
     return `${numberToWords(Number(a))} for ${numberToWords(Number(b))}`;
   });
 
-  out = out.replace(/\b([0-9]{1,2}):([0-9]{2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, function (_, h, m, ap) {
-    const hour = numberToWords(Number(h));
-    const minuteNum = Number(m);
-    const minute =
-      minuteNum === 0
-        ? ""
-        : minuteNum < 10
-        ? ` oh ${numberToWords(minuteNum)}`
-        : ` ${numberToWords(minuteNum)}`;
-    const suffix = /^a/i.test(ap) ? " a m" : " p m";
-    return `${hour}${minute}${suffix}`;
-  });
+  out = out.replace(
+    /\b([0-9]{1,2}):([0-9]{2})\s?(a\.?m\.?|p\.?m\.?)\b/gi,
+    function (_, h, m, ap) {
+      const hour = numberToWords(Number(h));
+      const minuteNum = Number(m);
+      const minute =
+        minuteNum === 0
+          ? ""
+          : minuteNum < 10
+          ? ` oh ${numberToWords(minuteNum)}`
+          : ` ${numberToWords(minuteNum)}`;
+      const suffix = /^a/i.test(ap) ? " a m" : " p m";
+      return `${hour}${minute}${suffix}`;
+    }
+  );
 
   out = out.replace(/\b([0-9]{1,2})\s?(am|pm|a\.m\.|p\.m\.)\b/gi, function (_, h, ap) {
     const suffix = /^a/i.test(ap) ? "a m" : "p m";
@@ -446,139 +449,207 @@ function speakableDetail(line) {
   if (lower === "go birds") return "Go Birds";
 
   if (lower.includes("delivery")) return "And yes — they will deliver it";
-  if (lower.includes("sectionals")) return raw;
-  if (lower.includes("sale")) return raw;
+  if (lower === "40% off sectionals") return "Forty percent off sectionals";
+  if (lower === "50% off") return "Fifty percent off";
 
   return raw;
 }
 
-function mergeDetailLines(scriptLines) {
-  const merged = [];
-  const normalized = scriptLines.map((x) => s(x)).filter(Boolean);
+function isWeakLine(line) {
+  const lower = s(line).toLowerCase();
 
-  for (let i = 0; i < normalized.length; i++) {
-    const current = normalized[i];
-    const lower = current.toLowerCase();
-
-    const next = normalized[i + 1] ? normalized[i + 1].toLowerCase() : "";
-
-    if (lower === "memorial day sale" && next === "weekend only") {
-      merged.push("Memorial Day Sale this weekend");
-      i += 1;
-      continue;
-    }
-
-    if (lower === "delivery available") {
-      merged.push("And yes — they will deliver it");
-      continue;
-    }
-
-    if (lower === "weekend only") {
-      merged.push("This weekend only");
-      continue;
-    }
-
-    merged.push(current);
-  }
-
-  return merged;
+  return (
+    lower === "delivery available" ||
+    lower === "weekend only" ||
+    lower === "details" ||
+    lower === "offer" ||
+    lower === "cta" ||
+    lower === "tag"
+  );
 }
 
-function cleanupFlow(script) {
+function lineMentionsBrand(line, brand) {
+  const l = s(line).toLowerCase();
+  const b = s(brand).toLowerCase();
+  if (!l || !b) return false;
+  return l.includes(b);
+}
+
+function canFollow(prev, next, brand) {
+  const a = s(prev).toLowerCase();
+  const b = s(next).toLowerCase();
+
+  if (!b) return false;
+  if (!a) return true;
+  if (a === b) return false;
+
+  if (lineMentionsBrand(prev, brand) && lineMentionsBrand(next, brand)) {
+    return false;
+  }
+
+  if (
+    a.includes("which is why people end up at") &&
+    lineMentionsBrand(next, brand)
+  ) {
+    return false;
+  }
+
+  if (a.includes("memorial day sale") && b.includes("sale")) {
+    return false;
+  }
+
+  return true;
+}
+
+function cleanupFlow(script, brand) {
   const out = [];
-  let previous = "";
 
   for (const raw of script) {
     const line = s(raw);
     if (!line) continue;
+    if (isWeakLine(line)) continue;
 
-    const lower = line.toLowerCase();
-    const prevLower = previous.toLowerCase();
+    const prev = out[out.length - 1] || "";
 
-    if (
-      prevLower &&
-      prevLower.includes(s(line).toLowerCase())
-    ) {
-      continue;
-    }
-
-    if (
-      previous &&
-      s(previous).toLowerCase() === s(line).toLowerCase()
-    ) {
-      continue;
-    }
-
-    if (
-      previous &&
-      previous.toLowerCase().includes("joe's furniture") &&
-      line.toLowerCase() === "which is why people end up at joe's furniture"
-    ) {
-      out.push("Joe's Furniture is why");
-      previous = "Joe's Furniture is why";
-      continue;
-    }
+    if (!canFollow(prev, line, brand)) continue;
 
     out.push(line);
-    previous = line;
   }
 
   return uniqueLines(out);
 }
 
-function build15(input) {
+function pickStoryBeats(count, input) {
+  const ctx = buildContext(input);
+  const weighted = shuffle(STORY_BEATS);
+
+  if (ctx.retail) {
+    return uniqueLines([
+      buildBeat("reaction", input),
+      buildBeat("explanation", input),
+      ...weighted.slice(0, count - 2).map((b) => buildBeat(b, input)),
+    ]).slice(0, count);
+  }
+
+  return weighted.slice(0, count).map((b) => buildBeat(b, input));
+}
+
+function buildOfferLine(input) {
+  return s(input.offer);
+}
+
+function buildDetailLines(input, max = 2) {
+  const rawDetails = uniqueLines(lines(input.details))
+    .map(speakableDetail)
+    .filter(Boolean)
+    .filter((line) => !isWeakLine(line));
+
+  const out = [];
+  const used = new Set();
+
+  for (const detail of rawDetails) {
+    const key = detail.toLowerCase();
+    if (used.has(key)) continue;
+    used.add(key);
+    out.push(detail);
+    if (out.length >= max) break;
+  }
+
+  return out;
+}
+
+function maybeFuseOfferAndDetail(offer, details) {
+  const offerLine = s(offer);
+  const firstDetail = s(details[0]);
+
+  if (!offerLine) {
+    return { offerLine: "", remainingDetails: details };
+  }
+
+  if (!firstDetail) {
+    return { offerLine, remainingDetails: details };
+  }
+
+  const offerLower = offerLine.toLowerCase();
+  const detailLower = firstDetail.toLowerCase();
+
+  if (offerLower.includes("sale") && detailLower.includes("percent")) {
+    return {
+      offerLine: `${offerLine} — ${firstDetail}`,
+      remainingDetails: details.slice(1),
+    };
+  }
+
+  if (offerLower.includes("sale") && detailLower.includes("weekend")) {
+    return {
+      offerLine: `${offerLine} ${firstDetail.toLowerCase()}`,
+      remainingDetails: details.slice(1),
+    };
+  }
+
+  return {
+    offerLine,
+    remainingDetails: details,
+  };
+}
+
+function buildCtaLine(input) {
+  return s(input.cta) || s(input.brand);
+}
+
+function assembleScript({ input, duration }) {
   const situation = buildSituation(input);
-  const beats = shuffle(STORY_BEATS).slice(0, 2).map((b) => buildBeat(b, input));
-  const offer = input.offer ? [input.offer] : [];
-  const cta = input.cta ? [input.cta] : [input.brand];
+  const beatCount = duration === 15 ? 2 : duration === 60 ? 4 : 3;
+  const beats = pickStoryBeats(beatCount, input);
 
-  let script = [situation, ...beats, ...offer, ...cta];
-  script = mergeDetailLines(script);
-  script = cleanupFlow(script);
+  const offer = buildOfferLine(input);
+  const rawDetails = buildDetailLines(
+    input,
+    duration === 60 ? 4 : duration === 15 ? 1 : 2
+  );
+  const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, rawDetails);
+  const cta = buildCtaLine(input);
 
-  return uniqueLines(script).map(ensurePeriod).join("\n");
+  const script = [situation];
+
+  if (beats[0]) script.push(beats[0]);
+  if (beats[1]) script.push(beats[1]);
+
+  if (offerLine) script.push(offerLine);
+  if (remainingDetails[0]) script.push(remainingDetails[0]);
+
+  if (duration === 60) {
+    if (beats[2]) script.push(beats[2]);
+    if (remainingDetails[1]) script.push(remainingDetails[1]);
+    if (beats[3]) script.push(beats[3]);
+    if (remainingDetails[2]) script.push(remainingDetails[2]);
+    if (remainingDetails[3]) script.push(remainingDetails[3]);
+  } else if (duration === 30) {
+    if (beats[2]) script.push(beats[2]);
+    if (remainingDetails[1]) script.push(remainingDetails[1]);
+  }
+
+  if (cta) script.push(cta);
+
+  return cleanupFlow(script, input.brand);
+}
+
+function build15(input) {
+  return assembleScript({ input, duration: 15 })
+    .map(ensurePeriod)
+    .join("\n");
 }
 
 function build30(input) {
-  const situation = buildSituation(input);
-  const beats = shuffle(STORY_BEATS).slice(0, 3).map((b) => buildBeat(b, input));
-  const offer = input.offer ? [input.offer] : [];
-  const details = uniqueLines(lines(input.details)).slice(0, 2).map(speakableDetail);
-  const cta = input.cta ? [input.cta] : [input.brand];
-
-  const pool = shuffle([
-    ...beats,
-    ...offer,
-    ...details,
-    ...cta,
-  ]);
-
-  let script = [situation, ...pool];
-  script = mergeDetailLines(script);
-  script = cleanupFlow(script);
-
-  return uniqueLines(script).map(ensurePeriod).join("\n");
+  return assembleScript({ input, duration: 30 })
+    .map(ensurePeriod)
+    .join("\n");
 }
 
 function build60(input) {
-  const situation = buildSituation(input);
-  const beats = shuffle(STORY_BEATS).slice(0, 4).map((b) => buildBeat(b, input));
-  const offer = input.offer ? [input.offer] : [];
-  const details = uniqueLines(lines(input.details)).slice(0, 4).map(speakableDetail);
-  const cta = input.cta ? [input.cta] : [input.brand];
-
-  const pool = shuffle([
-    ...beats,
-    ...offer,
-    ...details,
-    ...cta,
-  ]);
-
-  let script = [situation, ...pool];
-  script = mergeDetailLines(script);
-  script = cleanupFlow(script);
-
-  return uniqueLines(script).map(ensurePeriod).join("\n");
+  return assembleScript({ input, duration: 60 })
+    .map(ensurePeriod)
+    .join("\n");
 }
 
 export async function POST(req) {
