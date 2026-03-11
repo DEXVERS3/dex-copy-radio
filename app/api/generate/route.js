@@ -2,17 +2,18 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_SCENARIO_ENGINE]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
 }
 
-function pickDuration(body) {
-  const d = body?.mode ?? body?.duration ?? body?.seconds;
-  const n = Number(d);
-  if (n === 15 || n === 30 || n === 60) return n;
-  return 30;
+function pick(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function shuffle(arr) {
+  return [...arr].sort(() => 0.5 - Math.random());
 }
 
 function lines(text) {
@@ -20,12 +21,6 @@ function lines(text) {
     .split(/\n+/)
     .map((x) => x.trim())
     .filter(Boolean);
-}
-
-function ensurePeriod(text) {
-  const t = s(text);
-  if (!t) return "";
-  return /[.!?]$/.test(t) ? t : `${t}.`;
 }
 
 function uniqueLines(arr) {
@@ -43,410 +38,230 @@ function uniqueLines(arr) {
   return out;
 }
 
-const SMALL = {
-  0: "zero",
-  1: "one",
-  2: "two",
-  3: "three",
-  4: "four",
-  5: "five",
-  6: "six",
-  7: "seven",
-  8: "eight",
-  9: "nine",
-  10: "ten",
-  11: "eleven",
-  12: "twelve",
-  13: "thirteen",
-  14: "fourteen",
-  15: "fifteen",
-  16: "sixteen",
-  17: "seventeen",
-  18: "eighteen",
-  19: "nineteen",
-};
+function ensurePeriod(text) {
+  const t = s(text);
+  if (!t) return "";
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
 
-const TENS = {
-  20: "twenty",
-  30: "thirty",
-  40: "forty",
-  50: "fifty",
-  60: "sixty",
-  70: "seventy",
-  80: "eighty",
-  90: "ninety",
-};
+function pickDuration(body) {
+  const d = body?.mode ?? body?.duration ?? body?.seconds;
+  const n = Number(d);
+  if (n === 15 || n === 30 || n === 60) return n;
+  return 30;
+}
+
+const SITUATIONS = [
+  "Sooner or later the weekend turns into a hunt for a deal",
+  "You know the moment when a good idea suddenly shows up",
+  "Some problems eventually solve themselves",
+  "Right about the time the day starts dragging",
+  "Funny how the right move usually appears when you need it"
+];
+
+function buildSituation() {
+  return pick(SITUATIONS);
+}
+
+const STORY_BEATS = [
+  "reaction",
+  "problem",
+  "explanation",
+  "aside",
+  "reinforcement",
+  "punchline"
+];
+
+function buildBeat(type, brand) {
+
+  if (type === "reaction") {
+    return pick([
+      "You know the feeling",
+      "Yeah… that will do it",
+      "Right about now it starts making sense"
+    ]);
+  }
+
+  if (type === "problem") {
+    return pick([
+      "Funny how ignoring the problem stops working",
+      "Sooner or later it catches up",
+      "Turns out that was not the best plan"
+    ]);
+  }
+
+  if (type === "explanation") {
+    return `Which is why people end up at ${brand}`;
+  }
+
+  if (type === "aside") {
+    return pick([
+      "Look… we have all been there",
+      "You know exactly what I mean",
+      "Anyway…"
+    ]);
+  }
+
+  if (type === "reinforcement") {
+    return pick([
+      "That usually does the trick",
+      "Now we are getting somewhere",
+      "That is the idea"
+    ]);
+  }
+
+  if (type === "punchline") {
+    return pick([
+      "Yeah… that will do it",
+      "Problem solved",
+      "Exactly"
+    ]);
+  }
+
+  return "";
+}
 
 function numberToWords(n) {
-  const num = Number(n);
-  if (!Number.isFinite(num)) return String(n);
 
-  if (num < 20) return SMALL[num];
+  const small = [
+    "zero","one","two","three","four","five","six","seven","eight","nine",
+    "ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen",
+    "seventeen","eighteen","nineteen"
+  ];
 
-  if (num < 100) {
-    const tens = Math.floor(num / 10) * 10;
-    const rest = num % 10;
-    return rest ? `${TENS[tens]}-${SMALL[rest]}` : TENS[tens];
+  const tens = [
+    "","","twenty","thirty","forty","fifty",
+    "sixty","seventy","eighty","ninety"
+  ];
+
+  n = Number(n);
+
+  if (n < 20) return small[n];
+
+  if (n < 100) {
+    return tens[Math.floor(n / 10)] +
+      (n % 10 ? "-" + small[n % 10] : "");
   }
 
-  if (num < 1000) {
-    const hundreds = Math.floor(num / 100);
-    const rest = num % 100;
-    return rest
-      ? `${SMALL[hundreds]} hundred ${numberToWords(rest)}`
-      : `${SMALL[hundreds]} hundred`;
+  if (n < 1000) {
+    return (
+      small[Math.floor(n / 100)] +
+      " hundred" +
+      (n % 100 ? " " + numberToWords(n % 100) : "")
+    );
   }
 
-  if (num < 10000) {
-    const thousands = Math.floor(num / 1000);
-    const rest = num % 1000;
-    return rest
-      ? `${SMALL[thousands]} thousand ${numberToWords(rest)}`
-      : `${SMALL[thousands]} thousand`;
-  }
-
-  return String(num)
-    .split("")
-    .map((d) => SMALL[Number(d)] || d)
-    .join(" ");
-}
-
-function digitStringToWords(str) {
-  return String(str)
-    .split("")
-    .map((ch) => (/\d/.test(ch) ? SMALL[Number(ch)] : ch))
-    .join(" ");
-}
-
-function formatWebsiteDomain(domain) {
-  const parts = String(domain).toLowerCase().split(".");
-  return parts
-    .map((part, index) => {
-      if (index === 0) return part.split("").join(" ");
-      return `dot ${part.split("").join(" ")}`;
-    })
-    .join(" ");
+  return String(n);
 }
 
 function formatBroadcastCopy(text) {
+
   let out = s(text);
 
-  out = out.replace(
-    /\b((?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9-]+(?:\.[a-zA-Z]{2,})+)\b/g,
-    function (_, domain) {
-      const cleaned = domain.replace(/^https?:\/\//i, "").replace(/^www\./i, "");
-      return formatWebsiteDomain(cleaned);
-    }
-  );
-
-  out = out.replace(
-    /\b(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b/g,
-    function (_, a, b, c) {
-      return `${digitStringToWords(a)}, ${digitStringToWords(b)}, ${digitStringToWords(c)}`;
-    }
-  );
-
-  out = out.replace(/\$([0-9]+)\.([0-9]{2})\b/g, function (_, dollars, cents) {
-    return `${numberToWords(Number(dollars))} dollars and ${numberToWords(Number(cents))} cents`;
+  out = out.replace(/\$([0-9]+)/g, (_, dollars) => {
+    return `${numberToWords(dollars)} dollars`;
   });
 
-  out = out.replace(/\$([0-9]+)\b/g, function (_, dollars) {
-    const d = Number(dollars);
-    return d === 1 ? "one dollar" : `${numberToWords(d)} dollars`;
+  out = out.replace(/\b([0-9]+)%/g, (_, n) => {
+    return `${numberToWords(n)} percent`;
   });
 
-  out = out.replace(/\b([0-9]+)%\b/g, function (_, num) {
-    return `${numberToWords(Number(num))} percent`;
+  out = out.replace(/\b([0-9]{1,2})\s?(am|pm)/gi, (_, h, ap) => {
+    return `${numberToWords(h)} ${ap === "am" ? "a m" : "p m"}`;
   });
 
-  out = out.replace(/\b([0-9]+)-for-([0-9]+)\b/gi, function (_, a, b) {
-    return `${numberToWords(Number(a))} for ${numberToWords(Number(b))}`;
-  });
-
-  out = out.replace(/\b([0-9]{1,2}):([0-9]{2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, function (_, h, m, ap) {
-    const hour = numberToWords(Number(h));
-    const minuteNum = Number(m);
-    const minute =
-      minuteNum === 0
-        ? ""
-        : minuteNum < 10
-        ? ` oh ${numberToWords(minuteNum)}`
-        : ` ${numberToWords(minuteNum)}`;
-    const suffix = /^a/i.test(ap) ? " a m" : " p m";
-    return `${hour}${minute}${suffix}`;
-  });
-
-  out = out.replace(/\b([0-9]{1,2})\s?(a\.?m\.?|p\.?m\.?)\b/gi, function (_, h, ap) {
-    const suffix = /^a/i.test(ap) ? "a m" : "p m";
-    return `${numberToWords(Number(h))} ${suffix}`;
-  });
-
-  out = out.replace(/\s*;\s*/g, ". ");
-  out = out.replace(/&/g, " and ");
   out = out.replace(/\s{2,}/g, " ").trim();
 
   return out;
 }
 
-function containsAny(text, words) {
-  const hay = s(text).toLowerCase();
-  return words.some(function (w) {
-    return hay.includes(w);
-  });
-}
-
-function buildContext(input) {
-  const blob = [
-    input.brand,
-    input.offer,
-    input.audience,
-    input.details,
-    input.tone,
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return {
-    sports: containsAny(blob, [
-      "eagles",
-      "football",
-      "nfl",
-      "game",
-      "gameday",
-      "sports bar",
-      "sunday ticket",
-      "kickoff",
-      "birds",
-      "cowboys",
-      "philly",
-      "tailgate",
-      "touchdown",
-    ]),
-    foodDrink: containsAny(blob, [
-      "mimosa",
-      "cider",
-      "beer",
-      "bar",
-      "burger",
-      "wings",
-      "brunch",
-      "drink",
-      "cocktail",
-      "happy hour",
-    ]),
-    auto: containsAny(blob, [
-      "car",
-      "truck",
-      "lease",
-      "dealer",
-      "dealership",
-      "oil",
-      "service",
-      "tires",
-      "trade",
-      "auto",
-    ]),
-    mattress: containsAny(blob, [
-      "mattress",
-      "sleep",
-      "back relief",
-      "back pain",
-      "bed",
-      "pillow",
-      "spine",
-      "couch",
-    ]),
-    retail: containsAny(blob, [
-      "sale",
-      "clearance",
-      "weekend sale",
-      "percent off",
-      "discount",
-      "shop",
-      "store",
-      "furniture",
-    ]),
-    event: containsAny(blob, [
-      "concert",
-      "show",
-      "tickets",
-      "event",
-      "festival",
-      "live music",
-      "comedy",
-    ]),
-    loud: containsAny(blob, ["loud", "rowdy", "wild", "crazy", "party", "hype"]),
-  };
-}
-
-function pickScenario(input) {
-  const ctx = buildContext(input);
-  const d = lines(input.details);
-
-  if (ctx.mattress) {
-    return [
-      "(yawn)",
-      "I have been sleeping in the doghouse all week",
-      "Turns out the couch is not built for a grown adult",
-    ];
-  }
-
-  if (ctx.sports && ctx.foodDrink && ctx.loud) {
-    return [
-      "When the Birds kick off, this place gets loud",
-      "Game day in here is not for the quiet crowd",
-      "If you came for polite, you picked the wrong bar",
-    ];
-  }
-
-  if (ctx.sports) {
-    return [
-      "When the game starts, the room changes",
-      "Some places show the game. This place lives it",
-      "If the Birds are on, you know where everybody ends up",
-    ];
-  }
-
-  if (ctx.foodDrink) {
-    return [
-      "Some nights start the second somebody says one more round",
-      "You know the kind of place where one drink turns into a story",
-      "Some spots do food and drinks. Others do a night worth talking about",
-    ];
-  }
-
-  if (ctx.auto) {
-    return [
-      "There comes a moment when your car tells on itself",
-      "You can ignore a lot. Your car usually is not one of them",
-      "That little sound, that light, that feeling. Yeah. It is time",
-    ];
-  }
-
-  if (ctx.retail) {
-    return [
-      "There is a moment when full price starts feeling personal",
-      "Sooner or later, the weekend turns into a hunt for a deal",
-      "You know that second when you realize waiting cost you money",
-    ];
-  }
-
-  if (ctx.event) {
-    return [
-      "When the lights go down, the excuses disappear",
-      "Some nights are supposed to stay home. This is not one of them",
-      "You can feel certain nights coming before they get here",
-    ];
-  }
-
-  if (d.length && d[0].length < 70) {
-    return [
-      d[0],
-      "That is where this story gets interesting",
-      "And that is where the smart move shows up",
-    ];
-  }
-
-  return [
-    "You know that moment when the day suddenly gets more interesting",
-    "Sometimes the whole plan changes with one good idea",
-    "Funny how the right move usually shows up right when you need it",
-  ];
-}
-
-function buildAct1(input) {
-  const options = pickScenario(input);
-  return options[Math.floor(Math.random() * options.length)];
-}
-
-function buildAct2(input) {
-  const d = uniqueLines(lines(input.details));
-  const out = [];
-
-  if (input.offer) out.push(input.offer);
-
-  for (const line of d.slice(0, 3)) {
-    if (input.offer && s(line).toLowerCase() === s(input.offer).toLowerCase()) continue;
-    out.push(line);
-  }
-
-  if (!out.length && input.brand) {
-    out.push(`That is why people end up at ${input.brand}`);
-  }
-
-  return uniqueLines(out);
-}
-
-function buildAct3(input) {
-  const d = uniqueLines(lines(input.details));
-  const out = [];
-
-  const lastDetail = d.length ? d[d.length - 1] : "";
-
-  if (
-    lastDetail &&
-    (/[!?]$/.test(lastDetail) || lastDetail === lastDetail.toUpperCase())
-  ) {
-    out.push(lastDetail);
-  }
-
-  if (input.cta) {
-    out.push(input.cta);
-  } else if (input.brand) {
-    out.push(`That is ${input.brand}`);
-  }
-
-  if (input.mustSay) out.push(input.mustSay);
-
-  return uniqueLines(out);
-}
-
 function build15(input) {
-  const act1 = buildAct1(input);
-  const act2 = buildAct2(input)[0] || "";
-  const act3 = buildAct3(input)[0] || input.cta || `That is ${input.brand}`;
 
-  return uniqueLines([act1, act2, act3]).map(ensurePeriod).join("\n");
-}
+  const situation = buildSituation();
 
-function build30(input) {
-  const act1 = buildAct1(input);
-  const act2 = buildAct2(input).slice(0, 3);
-  const act3 = buildAct3(input).slice(0, 2);
+  const beats = shuffle(STORY_BEATS)
+    .slice(0,2)
+    .map(b => buildBeat(b,input.brand));
 
-  const out = [act1];
+  const offer = input.offer ? [input.offer] : [];
+  const cta = input.cta ? [input.cta] : [input.brand];
 
-  for (const line of act2) {
-    out.push(line);
-  }
+  const script = [
+    situation,
+    ...beats,
+    ...offer,
+    ...cta
+  ];
 
-  if (input.brand && !out.some((x) => s(x).toLowerCase().includes(s(input.brand).toLowerCase()))) {
-    out.splice(1, 0, `At ${input.brand}`);
-  }
-
-  for (const line of act3) {
-    if (s(line).toLowerCase() === `that is ${s(input.brand).toLowerCase()}`) continue;
-    out.push(line);
-  }
-
-  return uniqueLines(out)
+  return uniqueLines(script)
     .map(ensurePeriod)
     .join("\n");
 }
-function build60(input) {
-  const act1 = buildAct1(input);
-  const act2 = buildAct2(input).slice(0, 3);
-  const act3 = buildAct3(input).slice(0, 3);
 
-  return uniqueLines([act1].concat(act2, act3))
+function build30(input) {
+
+  const situation = buildSituation();
+
+  const beats = shuffle(STORY_BEATS)
+    .slice(0,3)
+    .map(b => buildBeat(b,input.brand));
+
+  const offer = input.offer ? [input.offer] : [];
+  const details = uniqueLines(lines(input.details)).slice(0,2);
+  const cta = input.cta ? [input.cta] : [input.brand];
+
+  const pool = shuffle([
+    ...beats,
+    ...offer,
+    ...details,
+    ...cta
+  ]);
+
+  const script = [
+    situation,
+    ...pool
+  ];
+
+  return uniqueLines(script)
+    .map(ensurePeriod)
+    .join("\n");
+}
+
+function build60(input) {
+
+  const situation = buildSituation();
+
+  const beats = shuffle(STORY_BEATS)
+    .slice(0,4)
+    .map(b => buildBeat(b,input.brand));
+
+  const offer = input.offer ? [input.offer] : [];
+  const details = uniqueLines(lines(input.details)).slice(0,4);
+  const cta = input.cta ? [input.cta] : [input.brand];
+
+  const pool = shuffle([
+    ...beats,
+    ...offer,
+    ...details,
+    ...cta
+  ]);
+
+  const script = [
+    situation,
+    ...pool
+  ];
+
+  return uniqueLines(script)
     .map(ensurePeriod)
     .join("\n");
 }
 
 export async function POST(req) {
+
   try {
+
     const body = await req.json().catch(() => ({}));
+
     const duration = pickDuration(body);
 
     const input = {
@@ -456,24 +271,28 @@ export async function POST(req) {
       tone: s(body.tone),
       cta: s(body.cta),
       mustSay: s(body.mustSay),
-      details: s(body.details || body.text),
+      details: s(body.details || body.text)
     };
 
-    let script =
-      duration === 15
-        ? build15(input)
-        : duration === 30
-        ? build30(input)
-        : build60(input);
+    let script;
+
+    if (duration === 15) script = build15(input);
+    else if (duration === 60) script = build60(input);
+    else script = build30(input);
 
     script = formatBroadcastCopy(script);
 
     return NextResponse.json({
       ok: true,
       output: script,
-      meta: { duration, version: VERSION },
+      meta: { duration, version: VERSION }
     });
+
   } catch {
-    return NextResponse.json({ ok: false, error: "Server error" }, { status: 500 });
+
+    return NextResponse.json(
+      { ok:false,error:"Server error"},
+      { status:500 }
+    );
   }
 }
