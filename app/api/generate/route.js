@@ -412,14 +412,28 @@ function build15(input) {
 
 function build30(input) {
   const act1 = buildAct1(input);
-  const act2 = buildAct2(input).slice(0, 2);
+  const act2 = buildAct2(input).slice(0, 3);
   const act3 = buildAct3(input).slice(0, 2);
 
-  return uniqueLines([act1].concat(act2, act3))
+  const out = [act1];
+
+  for (const line of act2) {
+    out.push(line);
+  }
+
+  if (input.brand && !out.some((x) => s(x).toLowerCase().includes(s(input.brand).toLowerCase()))) {
+    out.splice(1, 0, `At ${input.brand}`);
+  }
+
+  for (const line of act3) {
+    if (s(line).toLowerCase() === `that is ${s(input.brand).toLowerCase()}`) continue;
+    out.push(line);
+  }
+
+  return uniqueLines(out)
     .map(ensurePeriod)
     .join("\n");
 }
-
 function build60(input) {
   const act1 = buildAct1(input);
   const act2 = buildAct2(input).slice(0, 3);
