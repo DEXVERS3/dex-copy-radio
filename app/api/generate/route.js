@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V3]]";
+const VERSION = "[[DEX_RADIO_CONVERSATION_ENGINE_V4]]";
 
 function s(v) {
   return typeof v === "string" ? v.trim() : "";
@@ -380,6 +380,14 @@ function buildBeat(type, input) {
       ]);
     }
 
+    if (ctx.retail) {
+      return pick([
+        "Sooner or later it turns into a hunt for a deal",
+        "Funny how waiting around stops making sense",
+        "At some point you either keep staring at it or you replace it",
+      ]);
+    }
+
     return pick([
       "Funny how ignoring the problem stops working",
       "Sooner or later it catches up",
@@ -416,6 +424,14 @@ function buildBeat(type, input) {
       return pick([
         "We gotta chase the mailman at ten",
         "I will handle that after lunch",
+      ]);
+    }
+
+    if (ctx.retail) {
+      return pick([
+        "Yeah… that will do it",
+        "Now that makes sense",
+        "That solves that",
       ]);
     }
 
@@ -464,7 +480,9 @@ function isWeakLine(line) {
     lower === "details" ||
     lower === "offer" ||
     lower === "cta" ||
-    lower === "tag"
+    lower === "tag" ||
+    lower === "anyway…" ||
+    lower === "anyway..."
   );
 }
 
@@ -473,6 +491,35 @@ function lineMentionsBrand(line, brand) {
   const b = s(brand).toLowerCase();
   if (!l || !b) return false;
   return l.includes(b);
+}
+
+function lineIsExplanation(line) {
+  const lower = s(line).toLowerCase();
+  return (
+    lower.includes("which is why people end up at") ||
+    lower.includes("is why") ||
+    lower.includes("that is where") ||
+    lower.includes("that is why")
+  );
+}
+
+function lineIsOffer(line) {
+  const lower = s(line).toLowerCase();
+  return lower.includes("sale") || lower.includes("percent off");
+}
+
+function lineIsDelivery(line) {
+  const lower = s(line).toLowerCase();
+  return lower.includes("deliver");
+}
+
+function lineIsSoftFiller(line) {
+  const lower = s(line).toLowerCase();
+  return (
+    lower === "you know exactly what i mean" ||
+    lower === "that is the idea" ||
+    lower === "that usually does the trick"
+  );
 }
 
 function canFollow(prev, next, brand) {
@@ -487,14 +534,15 @@ function canFollow(prev, next, brand) {
     return false;
   }
 
-  if (
-    a.includes("which is why people end up at") &&
-    lineMentionsBrand(next, brand)
-  ) {
+  if (lineIsExplanation(prev) && lineMentionsBrand(next, brand)) {
     return false;
   }
 
-  if (a.includes("memorial day sale") && b.includes("sale")) {
+  if (lineIsOffer(prev) && lineIsOffer(next)) {
+    return false;
+  }
+
+  if (lineIsDelivery(prev) && lineIsDelivery(next)) {
     return false;
   }
 
@@ -519,19 +567,8 @@ function cleanupFlow(script, brand) {
   return uniqueLines(out);
 }
 
-function pickStoryBeats(count, input) {
-  const ctx = buildContext(input);
-  const weighted = shuffle(STORY_BEATS);
-
-  if (ctx.retail) {
-    return uniqueLines([
-      buildBeat("reaction", input),
-      buildBeat("explanation", input),
-      ...weighted.slice(0, count - 2).map((b) => buildBeat(b, input)),
-    ]).slice(0, count);
-  }
-
-  return weighted.slice(0, count).map((b) => buildBeat(b, input));
+function pickStoryBeats(count) {
+  return shuffle(STORY_BEATS).slice(0, count);
 }
 
 function buildOfferLine(input) {
@@ -597,10 +634,117 @@ function buildCtaLine(input) {
   return s(input.cta) || s(input.brand);
 }
 
-function assembleScript({ input, duration }) {
+function retailReaction() {
+  return pick([
+    "You know the feeling",
+    "Yeah… there it is",
+    "Right about now it starts making sense",
+  ]);
+}
+
+function retailProblem() {
+  return pick([
+    "Sooner or later it turns into a hunt for a deal",
+    "At some point you either keep staring at it or you replace it",
+    "Funny how waiting around stops making sense",
+  ]);
+}
+
+function retailAside() {
+  return pick([
+    "Look… we have all been there",
+    "You know how that goes",
+  ]);
+}
+
+function retailSupportAfterOffer() {
+  return pick([
+    "And yes — they will deliver it",
+    "And yes — delivery is handled",
+  ]);
+}
+
+function retailClose(brand, cta) {
+  const closePool = uniqueLines([
+    s(cta),
+    s(brand),
+    `${brand}.`,
+  ]).filter(Boolean);
+
+  return pick(closePool);
+}
+
+function assembleRetailScript({ input, duration }) {
+  const situation = buildSituation(input);
+  const offer = buildOfferLine(input);
+  const rawDetails = buildDetailLines(
+    input,
+    duration === 60 ? 4 : duration === 15 ? 1 : 2
+  );
+  const { offerLine, remainingDetails } = maybeFuseOfferAndDetail(offer, rawDetails);
+  const cta = buildCtaLine(input);
+
+  const supportDelivery =
+    remainingDetails.find((line) => lineIsDelivery(line)) || retailSupportAfterOffer();
+
+  const supportOther = remainingDetails.find((line) => !lineIsDelivery(line)) || "";
+  const weekender = remainingDetails.find((line) => line.toLowerCase().includes("weekend")) || "";
+
+  const script = [situation];
+
+  if (duration === 15) {
+    script.push(retailReaction());
+    if (offerLine) script.push(offerLine);
+    if (supportDelivery) script.push(supportDelivery);
+    script.push(retailClose(input.brand, cta));
+    return cleanupFlow(script, input.brand);
+  }
+
+  if (duration === 30) {
+    script.push(retailProblem());
+
+    if (Math.random() > 0.45) {
+      script.push(retailAside());
+    }
+
+    if (offerLine) script.push(offerLine);
+    if (supportDelivery) script.push(supportDelivery);
+
+    if (supportOther && !lineIsDelivery(supportOther) && !lineIsOffer(supportOther)) {
+      script.push(supportOther);
+    }
+
+    script.push(retailClose(input.brand, cta));
+    return cleanupFlow(script, input.brand);
+  }
+
+  script.push(retailReaction());
+  script.push(retailProblem());
+
+  if (Math.random() > 0.35) {
+    script.push(retailAside());
+  }
+
+  if (offerLine) script.push(offerLine);
+  if (supportDelivery) script.push(supportDelivery);
+
+  if (supportOther && !lineIsDelivery(supportOther) && !lineIsOffer(supportOther)) {
+    script.push(supportOther);
+  }
+
+  if (weekender && !lineIsOffer(weekender) && !lineIsDelivery(weekender)) {
+    script.push(weekender);
+  }
+
+  script.push(retailClose(input.brand, cta));
+  return cleanupFlow(script, input.brand);
+}
+
+function assembleGenericScript({ input, duration }) {
   const situation = buildSituation(input);
   const beatCount = duration === 15 ? 2 : duration === 60 ? 4 : 3;
-  const beats = pickStoryBeats(beatCount, input);
+  const beatTypes = pickStoryBeats(beatCount);
+  const beats = beatTypes.map((b) => buildBeat(b, input)).filter(Boolean);
 
   const offer = buildOfferLine(input);
   const rawDetails = buildDetailLines(
@@ -632,6 +776,16 @@ function assembleScript({ input, duration }) {
   if (cta) script.push(cta);
 
   return cleanupFlow(script, input.brand);
+}
+
+function assembleScript({ input, duration }) {
+  const ctx = buildContext(input);
+
+  if (ctx.retail) {
+    return assembleRetailScript({ input, duration });
+  }
+
+  return assembleGenericScript({ input, duration });
 }
 
 function build15(input) {
