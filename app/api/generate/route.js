@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_RADIO_ENGINE_SITUATION_V1]]";
+const VERSION = "[[DEX_RADIO_ENGINE_SITUATION_V2]]";
 
 const TARGET_LINES = {
   15: { min: 5, max: 7 },
@@ -32,6 +32,7 @@ function lines(text) {
 function uniqueLines(arr) {
   const seen = new Set();
   const out = [];
+
   for (const item of arr) {
     const val = s(item);
     const key = val.toLowerCase();
@@ -39,6 +40,7 @@ function uniqueLines(arr) {
     seen.add(key);
     out.push(val);
   }
+
   return out;
 }
 
@@ -79,7 +81,7 @@ function detectSituation(input) {
   if (/service|reliable|provider|plan|utility|power|water|gas/.test(blob)) scores.maintenance += 2;
   if (/upgrade|new|remodel|cosmetic|improve|better/.test(blob)) scores.improvement += 2;
   if (/restaurant|bar|drink|dining|food|nightlife/.test(blob)) scores.experience += 2;
-  if (/festival|fair|concert|event|tickets|music|show/.test(blob)) scores.invitation += 3;
+  if (/festival|fair|concert|event|tickets|music|show|rides|games/.test(blob)) scores.invitation += 3;
 
   return Object.entries(scores).sort((a,b)=>b[1]-a[1])[0][0];
 }
@@ -105,8 +107,8 @@ function openingLine(input, situation) {
 
   if (situation === "improvement") {
     return pick([
-      "Sooner or later the room starts telling on itself",
-      "Sometimes the upgrade becomes obvious",
+      "Sooner or later the upgrade becomes obvious",
+      "Sometimes the change you need is right in front of you",
       `That is where ${brand} comes in`,
     ]);
   }
@@ -127,57 +129,37 @@ function openingLine(input, situation) {
     ]);
   }
 
-  return pick([
-    "Funny how the right move usually appears when you need it",
-    "Sometimes the whole plan changes with one good idea",
-  ]);
+  return "Sometimes the right move shows up when you need it";
 }
 
-function buildCoreLines(input) {
+function buildDetailLines(input) {
+  return uniqueLines(lines(input.details));
+}
+
+function buildScript(input, situation, duration) {
+  const open = openingLine(input, situation);
   const brand = input.brand;
   const offer = s(input.offer);
   const cta = s(input.cta) || brand;
-  const details = uniqueLines(lines(input.details)).slice(0,6);
+  const details = buildDetailLines(input);
 
-  const arr = [];
+  let script = [open];
 
-  if (offer) arr.push(offer);
+  if (offer) script.push(offer);
 
-  for (const d of details) arr.push(d);
+  script = [...script, ...shuffle(details)];
 
-  if (cta) arr.push(cta);
+  script.push(cta);
 
-  return arr;
-}
+  script = uniqueLines(script);
 
-function expandToTarget(base, duration) {
   const target = TARGET_LINES[duration];
-  let script = uniqueLines(base);
 
-  const filler = [
-    "You know the feeling",
-    "That usually does the trick",
-    "Now we are getting somewhere",
-    "That is the idea",
-    "Right about now it starts making sense",
-  ];
-
-  while (script.length < target.min) {
-    script.push(pick(filler));
+  if (script.length > target.max) {
+    script = script.slice(0, target.max);
   }
 
-  return script.slice(0, target.max);
-}
-
-function assembleScript(input, situation, duration) {
-  const open = openingLine(input, situation);
-  const core = buildCoreLines(input);
-
-  const base = [open, ...shuffle(core)];
-
-  return expandToTarget(base, duration)
-    .map(ensurePeriod)
-    .join("\n");
+  return script.map(ensurePeriod).join("\n");
 }
 
 export async function POST(req) {
@@ -197,7 +179,7 @@ export async function POST(req) {
 
     const situation = detectSituation(input);
 
-    const script = assembleScript(input, situation, duration);
+    const script = buildScript(input, situation, duration);
 
     return NextResponse.json({
       ok: true,
@@ -206,9 +188,10 @@ export async function POST(req) {
         duration,
         situation,
         version: VERSION,
-        lines: lines(script).length
+        lines: lines(script).length,
       },
     });
+
   } catch {
     return NextResponse.json(
       { ok: false, error: "Server error" },
