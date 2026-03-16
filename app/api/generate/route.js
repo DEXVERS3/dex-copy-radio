@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_ENGINE_V7_1_PREMISE_AWARE]]";
+const VERSION = "[[DEX_ENGINE_V7_2_PREMISE_AWARE]]";
 
 const TARGET_WORDS = {
   15: { min: 28, max: 42 },
@@ -198,6 +198,8 @@ function cleanupText(text) {
     .replace(/,\s*,+/g, ", ")
     .replace(/\s*\.\s*\./g, ".")
     .replace(/\bn\b(?=\s+formal\b)/gi, "no")
+    .replace(/([a-z])\.([A-Z])/g, "$1. $2")
+    .replace(/([a-z])\.call\b/gi, "$1. call")
     .trim();
 }
 
@@ -283,7 +285,6 @@ function looksLikeDateOrTime(text) {
 
 function looksLikeListItem(text) {
   const x = s(text).toLowerCase();
-
   return !looksLikeDateOrTime(x);
 }
 
@@ -412,9 +413,11 @@ function opening(sub, input, duration, premise) {
 
   if (premise === "absurd") {
     const first = pick([
-      `This is your invitation to ${sub}`,
       `Well, at least ${sub} is being honest`,
-      `There is something to be said for a business that tells you exactly what it is`
+      `There is something to be said for a business that tells you exactly what it is`,
+      `You do have to admire a business that opens with the bad news`,
+      `Not every business leads with a confession, but here we are`,
+      `There is a certain charm in telling people not to expect much`
     ]);
 
     if (offer) return [first, offer];
