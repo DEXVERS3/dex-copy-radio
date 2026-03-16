@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_ENGINE_V7_PREMISE_AWARE]]";
+const VERSION = "[[DEX_ENGINE_V7_1_PREMISE_AWARE]]";
 
 const TARGET_WORDS = {
   15: { min: 28, max: 42 },
@@ -43,9 +43,7 @@ function unique(arr) {
 
 function ensurePeriod(t) {
   const x = s(t);
-
   if (!x) return "";
-
   return /[.!?]$/.test(x) ? x : `${x}.`;
 }
 
@@ -54,7 +52,6 @@ function pickDuration(body) {
   const n = Number(d);
 
   if (n === 15 || n === 30 || n === 60) return n;
-
   return 30;
 }
 
@@ -163,7 +160,6 @@ function speakMoney(text) {
     if (!c) return `${dollars} dollars`;
 
     const cents = numberToWords(Number(c));
-
     return `${dollars} dollars and ${cents} cents`;
   });
 }
@@ -193,6 +189,7 @@ function cleanupText(text) {
   return s(text)
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
+    .replace(/\r/g, "\n")
     .replace(/\s+/g, " ")
     .replace(/\.\s*,/g, ". ")
     .replace(/!\s*,/g, "! ")
@@ -201,6 +198,17 @@ function cleanupText(text) {
     .replace(/,\s*,+/g, ", ")
     .replace(/\s*\.\s*\./g, ".")
     .replace(/\bn\b(?=\s+formal\b)/gi, "no")
+    .trim();
+}
+
+function cleanJoins(line) {
+  return s(line)
+    .replace(/\.\s+and\s+/gi, ". ")
+    .replace(/\.\s+but\s+/gi, ". ")
+    .replace(/\.\s+so\s+/gi, ". ")
+    .replace(/\.\s+then\s+/gi, ". ")
+    .replace(/\s+and\s+and\s+/gi, " and ")
+    .replace(/\.\s+\./g, ".")
     .trim();
 }
 
@@ -258,7 +266,25 @@ function joinNatural(parts) {
   if (list.length === 2) return `${list[0]} and ${list[1]}`;
   if (list.length === 3) return `${list[0]}, ${list[1]}, and ${list[2]}`;
 
-  return `${list[0]}, ${list[1]}, ${list[2]}, and ${list.slice(3).join(", ")}`;
+  return `${list.slice(0, -1).join(", ")}, and ${list[list.length - 1]}`;
+}
+
+function looksLikeDateOrTime(text) {
+  const x = s(text).toLowerCase();
+
+  return (
+    /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(x) ||
+    /\b\d{1,2}(am|pm)\b/.test(x) ||
+    /\bnoon\b/.test(x) ||
+    /\bdaily\b/.test(x) ||
+    /\bsaturday\b|\bsunday\b|\bmonday\b|\btuesday\b|\bwednesday\b|\bthursday\b|\bfriday\b/.test(x)
+  );
+}
+
+function looksLikeListItem(text) {
+  const x = s(text).toLowerCase();
+
+  return !looksLikeDateOrTime(x);
 }
 
 function classifyPremise(input) {
@@ -283,7 +309,7 @@ function classifyPremise(input) {
   const eventWords = [
     "festival", "fair", "concert", "show", "parade", "celebration",
     "weekend", "crafts", "live music", "ride free", "admission",
-    "tickets", "food", "games", "event", "annual"
+    "tickets", "food", "games", "event", "annual", "petting zoo"
   ];
 
   const retailWords = [
@@ -459,36 +485,61 @@ function buildSupportLines(det, duration, premise, sub) {
   if (!det.length) return [];
 
   const maxLines = duration === 15 ? 2 : duration === 30 ? 4 : 7;
-  const out = [];
-
-  out.push(detailLead(premise, sub));
+  const out = [detailLead(premise, sub)];
 
   let i = 0;
+
   while (i < det.length && out.length < maxLines) {
+    const current = det[i];
+    const next = det[i + 1];
     const remainingLines = maxLines - out.length;
-    const remainingDetails = det.length - i;
 
     if (remainingLines === 1) {
       out.push(joinNatural(det.slice(i)));
       break;
     }
 
-    if (duration === 15) {
-      out.push(joinNatural(det.slice(i, i + 2)));
+    if (premise === "event" && looksLikeDateOrTime(current)) {
+      out.push(current);
+      i += 1;
+      continue;
+    }
+
+    if (premise === "event" && looksLikeListItem(current) && looksLikeListItem(next)) {
+      out.push(joinNatural([current, next]));
       i += 2;
       continue;
     }
 
-    if (duration === 30) {
-      const take = remainingDetails >= 3 ? 2 : 1;
-      out.push(joinNatural(det.slice(i, i + take)));
-      i += take;
+    if (duration === 15) {
+      if (next && !looksLikeDateOrTime(current) && !looksLikeDateOrTime(next)) {
+        out.push(joinNatural([current, next]));
+        i += 2;
+      } else {
+        out.push(current);
+        i += 1;
+      }
       continue;
     }
 
-    const take = remainingDetails >= 5 ? 2 : 1;
-    out.push(joinNatural(det.slice(i, i + take)));
-    i += take;
+    if (duration === 30) {
+      if (next && !looksLikeDateOrTime(current) && !looksLikeDateOrTime(next)) {
+        out.push(joinNatural([current, next]));
+        i += 2;
+      } else {
+        out.push(current);
+        i += 1;
+      }
+      continue;
+    }
+
+    if (next && !looksLikeDateOrTime(current) && !looksLikeDateOrTime(next)) {
+      out.push(joinNatural([current, next]));
+      i += 2;
+    } else {
+      out.push(current);
+      i += 1;
+    }
   }
 
   return unique(out);
@@ -540,11 +591,21 @@ function act3(sub, premise) {
 }
 
 function closing(sub, input) {
-  const cta = s(input.cta) ? speakable(input.cta) : "";
+  const rawCta = s(input.cta);
 
-  if (cta) return cta;
+  if (!rawCta) return `Visit ${sub}`;
 
-  return `Visit ${sub}`;
+  const cta = speakable(rawCta);
+  const ctaLower = cta.toLowerCase();
+  const subLower = sub.toLowerCase();
+
+  const hasActionVerb = /\b(visit|call|come|see|join|stop by|learn more|get tickets|book now|order now)\b/i.test(cta);
+  const mentionsSubject = ctaLower.includes(subLower);
+
+  if (mentionsSubject) return cta;
+  if (!hasActionVerb) return `Visit ${sub}`;
+
+  return cta;
 }
 
 function expansionLines(sub, premise, duration) {
@@ -743,6 +804,7 @@ function buildScript(input, duration) {
     script
       .map(speakable)
       .map(cleanupText)
+      .map(cleanJoins)
       .filter(Boolean)
   );
 
