@@ -2,18 +2,12 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_ENGINE_V8_STORY_ARC]]";
-
-const TARGET_WORDS = {
-  15: { min: 28, max: 42 },
-  30: { min: 55, max: 85 },
-  60: { min: 115, max: 155 },
-};
+const VERSION = "[[DEX_ENGINE_V10_SUBJECT_FIRST]]";
 
 const TARGET_LINES = {
   15: { min: 5, max: 7 },
-  30: { min: 8, max: 11 },
-  60: { min: 14, max: 18 },
+  30: { min: 8, max: 10 },
+  60: { min: 12, max: 15 },
 };
 
 function s(v) {
@@ -31,9 +25,7 @@ function unique(arr) {
   for (const item of arr) {
     const t = s(item);
     const key = t.toLowerCase();
-
     if (!t || seen.has(key)) continue;
-
     seen.add(key);
     out.push(t);
   }
@@ -50,7 +42,6 @@ function ensurePeriod(t) {
 function pickDuration(body) {
   const d = body?.mode ?? body?.duration ?? body?.seconds;
   const n = Number(d);
-
   if (n === 15 || n === 30 || n === 60) return n;
   return 30;
 }
@@ -64,8 +55,24 @@ function wordCount(text) {
   return m ? m.length : 0;
 }
 
-function totalWords(arr) {
-  return arr.reduce((n, line) => n + wordCount(line), 0);
+function cleanupText(text) {
+  return s(text)
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\r/g, "\n")
+    .replace(/\s+/g, " ")
+    .replace(/\.\s*,/g, ". ")
+    .replace(/!\s*,/g, "! ")
+    .replace(/\?\s*,/g, "? ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s*,+/g, ", ")
+    .replace(/\s*\.\s*\./g, ".")
+    .replace(/\s*—\s*/g, " — ")
+    .replace(/\s*-\s*/g, " — ")
+    .replace(/([a-z])\.([A-Z])/g, "$1. $2")
+    .replace(/([a-z])\.call\b/gi, "$1. call")
+    .replace(/\bNLINE\b/gi, "online")
+    .trim();
 }
 
 function numberToWords(n) {
@@ -99,17 +106,13 @@ function numberToWords(n) {
   if (n < 1000) {
     const h = Math.floor(n / 100);
     const r = n % 100;
-    return r
-      ? `${ones[h]} hundred ${numberToWords(r)}`
-      : `${ones[h]} hundred`;
+    return r ? `${ones[h]} hundred ${numberToWords(r)}` : `${ones[h]} hundred`;
   }
 
   if (n < 1000000) {
     const th = Math.floor(n / 1000);
     const r = n % 1000;
-    return r
-      ? `${numberToWords(th)} thousand ${numberToWords(r)}`
-      : `${numberToWords(th)} thousand`;
+    return r ? `${numberToWords(th)} thousand ${numberToWords(r)}` : `${numberToWords(th)} thousand`;
   }
 
   return String(n);
@@ -117,37 +120,14 @@ function numberToWords(n) {
 
 function ordinalWord(n) {
   const map = {
-    1: "first",
-    2: "second",
-    3: "third",
-    4: "fourth",
-    5: "fifth",
-    6: "sixth",
-    7: "seventh",
-    8: "eighth",
-    9: "ninth",
-    10: "tenth",
-    11: "eleventh",
-    12: "twelfth",
-    13: "thirteenth",
-    14: "fourteenth",
-    15: "fifteenth",
-    16: "sixteenth",
-    17: "seventeenth",
-    18: "eighteenth",
-    19: "nineteenth",
-    20: "twentieth",
-    21: "twenty-first",
-    22: "twenty-second",
-    23: "twenty-third",
-    24: "twenty-fourth",
-    25: "twenty-fifth",
-    26: "twenty-sixth",
-    27: "twenty-seventh",
-    28: "twenty-eighth",
-    29: "twenty-ninth",
-    30: "thirtieth",
-    31: "thirty-first",
+    1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+    6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth",
+    11: "eleventh", 12: "twelfth", 13: "thirteenth", 14: "fourteenth",
+    15: "fifteenth", 16: "sixteenth", 17: "seventeenth", 18: "eighteenth",
+    19: "nineteenth", 20: "twentieth", 21: "twenty-first", 22: "twenty-second",
+    23: "twenty-third", 24: "twenty-fourth", 25: "twenty-fifth", 26: "twenty-sixth",
+    27: "twenty-seventh", 28: "twenty-eighth", 29: "twenty-ninth",
+    30: "thirtieth", 31: "thirty-first",
   };
 
   return map[n] || numberToWords(n);
@@ -156,9 +136,7 @@ function ordinalWord(n) {
 function speakMoney(text) {
   return text.replace(/\$(\d+)(?:\.(\d{1,2}))?/g, (_, d, c) => {
     const dollars = numberToWords(Number(d));
-
     if (!c) return `${dollars} dollars`;
-
     const cents = numberToWords(Number(c));
     return `${dollars} dollars and ${cents} cents`;
   });
@@ -181,54 +159,35 @@ function speakUrls(text) {
   );
 }
 
+function speakTimes(text) {
+  let out = text;
+
+  out = out.replace(/\b(\d{1,2})\s?p\b/gi, (_, h) => `${numberToWords(Number(h))} p m`);
+  out = out.replace(/\b(\d{1,2})\s?a\b/gi, (_, h) => `${numberToWords(Number(h))} a m`);
+  out = out.replace(/\b(\d{1,2}):(\d{2})\s?(am|pm)\b/gi, (_, h, m, ap) => {
+    const hh = numberToWords(Number(h));
+    const mm = Number(m) === 0 ? "" : ` ${numberToWords(Number(m))}`;
+    return `${hh}${mm} ${ap.toLowerCase().split("").join(" ")}`.trim();
+  });
+
+  return out;
+}
+
 function speakNumbers(text) {
   return text.replace(/\b\d+\b/g, (n) => numberToWords(Number(n)));
-}
-
-function cleanupText(text) {
-  return s(text)
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/\r/g, "\n")
-    .replace(/\s+/g, " ")
-    .replace(/\.\s*,/g, ". ")
-    .replace(/!\s*,/g, "! ")
-    .replace(/\?\s*,/g, "? ")
-    .replace(/\s+,/g, ",")
-    .replace(/,\s*,+/g, ", ")
-    .replace(/\s*\.\s*\./g, ".")
-    .replace(/\s*-\s*/g, " — ")
-    .replace(/\bn\b(?=\s+formal\b)/gi, "no")
-    .replace(/([a-z])\.([A-Z])/g, "$1. $2")
-    .replace(/([a-z])\.call\b/gi, "$1. call")
-    .trim();
-}
-
-function cleanJoins(line) {
-  return s(line)
-    .replace(/\.\s+and\s+/gi, ". ")
-    .replace(/\.\s+but\s+/gi, ". ")
-    .replace(/\.\s+so\s+/gi, ". ")
-    .replace(/\.\s+then\s+/gi, ". ")
-    .replace(/\s+and\s+and\s+/gi, " and ")
-    .replace(/\.\s+\./g, ".")
-    .replace(/,\./g, ".")
-    .trim();
 }
 
 function speakable(line) {
   let out = cleanupText(line);
 
   if (!out) return "";
-
-  if (out.toLowerCase() === "kids under 8 ride free") {
-    return "Kids under eight ride free";
-  }
+  if (out.toLowerCase() === "kids under 8 ride free") return "Kids under eight ride free";
 
   out = out.replace(/\s*&\s*/g, " and ");
   out = speakMoney(out);
   out = speakDates(out);
   out = speakUrls(out);
+  out = speakTimes(out);
   out = speakNumbers(out);
 
   return out;
@@ -258,54 +217,33 @@ function splitDetailFragments(text) {
   return unique(chunks.map(speakable).map(cleanupText).filter(Boolean));
 }
 
-function joinNatural(parts) {
-  const list = parts.map(cleanupText).filter(Boolean);
-
-  if (!list.length) return "";
-  if (list.length === 1) return list[0];
-  if (list.length === 2) return `${list[0]} and ${list[1]}`;
-  if (list.length === 3) return `${list[0]}, ${list[1]}, and ${list[2]}`;
-
-  return `${list.slice(0, -1).join(", ")}, and ${list[list.length - 1]}`;
+function looksLikeQuestion(text) {
+  return /\?$/.test(s(text));
 }
 
 function looksLikeDateOrTime(text) {
   const x = s(text).toLowerCase();
-
   return (
     /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(x) ||
     /\b\d{1,2}(am|pm)\b/.test(x) ||
-    /\b\d{1,2}:\d{2}\b/.test(x) ||
-    /\bnoon\b/.test(x) ||
-    /\bmidnight\b/.test(x) ||
-    /\bdaily\b/.test(x) ||
+    /\b\d{1,2}\s[a]\sm\b|\b\d{1,2}\s[p]\sm\b/.test(x) ||
+    /\bnoon\b|\bmidnight\b|\bdaily\b/.test(x) ||
     /\bsaturday\b|\bsunday\b|\bmonday\b|\btuesday\b|\bwednesday\b|\bthursday\b|\bfriday\b/.test(x)
   );
 }
 
 function looksLikeContact(text) {
   const x = s(text).toLowerCase();
-
   return (
-    /\b(?:call|visit|log on|check out|book now|learn more|join us|get tickets|register|apply)\b/.test(x) ||
+    /\b(call|visit|log on|check out|book now|learn more|join us|get tickets|register|apply)\b/.test(x) ||
     /\b(?:https?:\/\/|www\.)/.test(x) ||
     /\b[a-z0-9-]+\.(com|net|org|io|co|fm|tv|us|biz|info)\b/.test(x) ||
     /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(x)
   );
 }
 
-function looksLikeQuestion(text) {
-  return /\?$/.test(s(text));
-}
-
-function looksLikeClaim(text) {
-  const x = s(text).toLowerCase();
-  return /\b(is|are|offers|has|provides|features|includes|available|accredited|award-winning|trusted|effective)\b/.test(x);
-}
-
-function looksLikeAudienceLine(text) {
-  const x = s(text).toLowerCase();
-  return /\byou\b|\byour\b|\bfor\b/.test(x);
+function looksLikeSentence(text) {
+  return /[.!?]$/.test(s(text));
 }
 
 function deriveFrame(input) {
@@ -314,33 +252,23 @@ function deriveFrame(input) {
     .join(" ")
     .toLowerCase();
 
-  if (
-    /unreliable|stooges|not even real|not gonna|probably not getting your money's worth|confession/.test(blob)
-  ) {
+  if (/unreliable|stooges|not even real|not gonna|confession|money's worth/.test(blob)) {
     return "confession";
   }
 
-  if (
-    /university|college|school|course|career|education|class|classes|financial aid|degree|accredited|training/.test(blob)
-  ) {
+  if (/university|college|school|course|career|education|class|classes|financial aid|degree|accredited|training/.test(blob)) {
     return "growth";
   }
 
-  if (
-    /festival|fair|concert|show|parade|celebration|event|food|music|games|admission|tickets|ride free/.test(blob)
-  ) {
+  if (/festival|fair|concert|show|parade|celebration|event|food|music|games|admission|tickets|ride free/.test(blob)) {
     return "experience";
   }
 
-  if (
-    /sale|discount|save|off|clearance|deal|financing|inventory|showroom|mattress|sectional|delivery/.test(blob)
-  ) {
+  if (/sale|discount|save|off|clearance|deal|financing|inventory|showroom|mattress|sectional|delivery/.test(blob)) {
     return "value";
   }
 
-  if (
-    /service|repair|law|lawyer|attorney|legal|clinic|doctor|dentist|roofing|plumbing|hvac|insurance|consultation/.test(blob)
-  ) {
+  if (/service|repair|law|lawyer|attorney|legal|clinic|doctor|dentist|roofing|plumbing|hvac|insurance|consultation/.test(blob)) {
     return "problem";
   }
 
@@ -350,88 +278,197 @@ function deriveFrame(input) {
 function openingPool(sub, frame) {
   if (frame === "experience") {
     return [
-      `You can feel certain days coming before they get here`,
+      "You can feel certain days coming before they get here",
       `${sub} is the kind of thing people make room for`,
-      `Some plans sound good the second you hear them`
+      "Some plans sound good the second you hear them"
     ];
   }
 
   if (frame === "growth") {
     return [
-      `At some point, the next step starts to matter`,
-      `Sooner or later, the question becomes what comes next`,
-      `There comes a point when waiting starts to feel expensive`
+      "Sooner or later, the question becomes what comes next",
+      "At some point, the next step starts to matter",
+      "There comes a point when waiting starts to feel expensive"
     ];
   }
 
   if (frame === "problem") {
     return [
-      `Most people wait a little longer than they should`,
-      `There comes a point when putting it off stops helping`,
-      `Usually the problem is not whether it matters`
+      "There comes a point when putting it off stops helping",
+      "Most people wait a little longer than they should",
+      "Usually the problem is not whether it matters"
     ];
   }
 
   if (frame === "value") {
     return [
-      `Sooner or later, value gets hard to ignore`,
-      `There comes a point when the smart move gets obvious`,
-      `Funny how the right offer changes the math`
+      "Sooner or later, value gets hard to ignore",
+      "There comes a point when the smart move gets obvious",
+      "Funny how the right offer changes the math"
     ];
   }
 
   if (frame === "confession") {
     return [
-      `Not every business leads with a confession, but here we are`,
-      `There is something to be said for a business that tells you exactly what it is`,
+      "Not every business leads with a confession, but here we are",
+      "There is something to be said for a business that tells you exactly what it is",
       `Well, at least ${sub} is being honest`
     ];
   }
 
   return [
     `Here is the thing about ${sub}`,
-    `Sooner or later, people start paying attention`,
-    `Sometimes the case starts making itself`
+    "Sooner or later, people start paying attention",
+    "Sometimes the case starts making itself"
   ];
 }
 
-function buildAct1(sub, input, frame, duration) {
-  const offer = s(input.offer) ? speakable(input.offer) : "";
-  const opener = pick(openingPool(sub, frame));
-  const out = [opener];
-
-  if (offer) {
-    if (frame === "experience") {
-      out.push(`${sub} has ${offer.toLowerCase()}`);
-    } else if (frame === "growth") {
-      out.push(`${sub} has ${offer.toLowerCase()}`);
-    } else if (frame === "problem") {
-      out.push(`${sub} has ${offer.toLowerCase()}`);
-    } else if (frame === "value") {
-      out.push(`${sub} has ${offer.toLowerCase()}`);
-    } else if (frame === "confession") {
-      out.push(offer);
-    } else {
-      out.push(offer);
-    }
-  } else if (duration === 60 && frame !== "confession") {
-    out.push(`${sub} is where that starts to come together`);
+function act3Pool(sub, frame) {
+  if (frame === "experience") {
+    return [
+      "That is the kind of day people remember",
+      `That is what makes ${sub} worth showing up for`,
+      "That is how plans stop sounding hypothetical"
+    ];
   }
 
-  return out.filter(Boolean);
+  if (frame === "growth") {
+    return [
+      "That is where the next step starts looking real",
+      "That is not a bad way to move your life forward",
+      "That is usually when the decision starts making sense"
+    ];
+  }
+
+  if (frame === "problem") {
+    return [
+      "That is usually when the right call gets obvious",
+      "That is not exactly the kind of thing you keep putting off",
+      "That is where the next move starts making itself"
+    ];
+  }
+
+  if (frame === "value") {
+    return [
+      "That is usually all the convincing a person needs",
+      "That is when the smart money stops waiting",
+      "That is not a bad reason to make the move"
+    ];
+  }
+
+  if (frame === "confession") {
+    return [
+      "Honestly, the straight answer is doing a lot of work here",
+      "At some point, brutal honesty becomes the selling point",
+      "You may not trust the pitch, but at least the pitch is honest"
+    ];
+  }
+
+  return [
+    "That is where the whole thing starts to land",
+    "That is usually enough to get a person moving",
+    "That is when the case starts making itself"
+  ];
+}
+
+function expansionPool(sub, frame) {
+  if (frame === "experience") {
+    return [
+      "Bring the family",
+      "Make plans now"
+    ];
+  }
+
+  if (frame === "growth") {
+    return [
+      "The right opportunity has a way of clearing the fog",
+      "Real flexibility tends to get a person's attention"
+    ];
+  }
+
+  if (frame === "problem") {
+    return [
+      "At that point, waiting is not exactly a strategy",
+      "Eventually, the fix becomes the plan"
+    ];
+  }
+
+  if (frame === "value") {
+    return [
+      "That tends to get a person's attention",
+      "You can only think about it for so long"
+    ];
+  }
+
+  if (frame === "confession") {
+    return [
+      "They did not exactly bury the lead",
+      "There is no confusion in the pitch"
+    ];
+  }
+
+  return [
+    "That starts to make the case",
+    "Now the picture gets clearer"
+  ];
+}
+
+function fragmentToSentence(line, frame, sub) {
+  const raw = cleanupText(line);
+  const lower = raw.toLowerCase();
+
+  if (!raw) return "";
+  if (looksLikeSentence(raw) || looksLikeQuestion(raw) || looksLikeDateOrTime(raw) || looksLikeContact(raw)) {
+    return raw;
+  }
+
+  if (frame === "confession") {
+    if (/lost money/.test(lower)) return "We're not gonna find your lost money";
+    if (/jail/.test(lower)) return "We can't get you out of jail";
+    if (/will/.test(lower)) return "We can't write your will";
+    if (/lawyer/.test(lower)) return "We're not even real lawyers";
+    if (/education/.test(lower)) return "We have no formal education";
+    if (/stooge/.test(lower)) return "We're just a couple of stooges";
+    if (/your money/.test(lower)) return "It's your money";
+  }
+
+  if (frame === "growth") {
+    if (/software engineer/.test(lower)) return "Software engineer?";
+    if (/building a business/.test(lower)) return "Building a business?";
+    if (/schedule/.test(lower)) return "Your schedule isn't fixed";
+    if (/education/.test(lower) && /shouldn't/.test(lower)) return "Your education shouldn't be either";
+    if (/attend classes/.test(lower)) return "Attend classes on your time";
+    if (/career/.test(lower) && /ai/.test(lower)) return `${sub} is the most effective way to build your career with AI`;
+    if (/accredited/.test(lower)) return `${sub} offers accredited course study`;
+  }
+
+  if (frame === "experience") {
+    if (/food|crafts|games|music/.test(lower) && wordCount(raw) <= 8) {
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
+  }
+
+  if (frame === "value") {
+    if (/financial aid/.test(lower)) return `${sub} has financial aid available`;
+    if (/delivery/.test(lower)) return "And yes — they will deliver it";
+  }
+
+  if (wordCount(raw) <= 4) {
+    return raw.charAt(0).toUpperCase() + raw.slice(1);
+  }
+
+  return raw;
 }
 
 function parseBrief(input) {
-  const detailLines = splitDetailFragments(input.details);
-  const mustSayLines = splitDetailFragments(input.mustSay);
-
-  const all = unique([...detailLines, ...mustSayLines]);
+  const details = splitDetailFragments(input.details);
+  const mustSay = splitDetailFragments(input.mustSay);
+  const all = unique([...details, ...mustSay]);
 
   const questions = [];
   const schedule = [];
   const contact = [];
   const claims = [];
-  const audience = [];
   const misc = [];
 
   for (const line of all) {
@@ -441,131 +478,56 @@ function parseBrief(input) {
       questions.push(line);
     } else if (looksLikeDateOrTime(line)) {
       schedule.push(line);
-    } else if (looksLikeClaim(line)) {
+    } else if (looksLikeSentence(line)) {
       claims.push(line);
-    } else if (looksLikeAudienceLine(line)) {
-      audience.push(line);
     } else {
       misc.push(line);
     }
   }
 
-  return {
-    questions,
-    schedule,
-    contact,
-    claims,
-    audience,
-    misc,
-    all,
-  };
+  return { questions, schedule, contact, claims, misc, all };
 }
 
-function buildAct2(parsed, duration) {
-  const out = [];
+function buildAct1(sub, input, frame) {
+  const out = [pick(openingPool(sub, frame))];
+  const offer = s(input.offer) ? speakable(input.offer) : "";
 
-  for (const q of parsed.questions) {
-    out.push(q);
-    if (duration === 15 && out.length >= 1) break;
-    if (duration === 30 && out.length >= 2) break;
-    if (duration === 60 && out.length >= 2) break;
-  }
-
-  const supporting = [...parsed.claims, ...parsed.audience, ...parsed.misc];
-
-  let i = 0;
-  while (i < supporting.length) {
-    const current = supporting[i];
-    const next = supporting[i + 1];
-
-    const canPair =
-      next &&
-      !looksLikeQuestion(current) &&
-      !looksLikeQuestion(next) &&
-      !looksLikeDateOrTime(current) &&
-      !looksLikeDateOrTime(next) &&
-      !looksLikeContact(current) &&
-      !looksLikeContact(next) &&
-      !/[.!?]/.test(current) &&
-      !/[.!?]/.test(next) &&
-      wordCount(current) <= 7 &&
-      wordCount(next) <= 7;
-
-    if (canPair) {
-      out.push(joinNatural([current, next]));
-      i += 2;
+  if (offer) {
+    if (frame === "confession") {
+      out.push(offer);
+    } else if (/financial aid/i.test(offer) && frame === "growth") {
+      out.push(`${sub} has ${offer.toLowerCase()}`);
+    } else if (wordCount(offer) <= 8) {
+      out.push(`${sub} has ${offer.toLowerCase()}`);
     } else {
-      out.push(current);
-      i += 1;
+      out.push(offer);
     }
   }
 
-  for (const item of parsed.schedule) {
-    out.push(item);
-  }
-
-  const maxAct2 =
-    duration === 15 ? 2 :
-    duration === 30 ? 4 :
-    7;
-
-  return unique(out).slice(0, maxAct2);
+  return out.filter(Boolean);
 }
 
-function act3Pool(sub, frame) {
-  if (frame === "experience") {
-    return [
-      `That is the kind of day people remember`,
-      `That is what makes ${sub} worth showing up for`,
-      `That is how plans stop sounding hypothetical`
-    ];
+function buildAct2(parsed, frame, sub, duration) {
+  const out = [];
+  const transformedMisc = parsed.misc.map((x) => fragmentToSentence(x, frame, sub));
+  const transformedClaims = parsed.claims.map((x) => fragmentToSentence(x, frame, sub));
+
+  const questions = parsed.questions.map((x) => fragmentToSentence(x, frame, sub));
+  const schedule = parsed.schedule.map((x) => fragmentToSentence(x, frame, sub));
+
+  const merged = unique([...questions, ...transformedClaims, ...transformedMisc, ...schedule]).filter(Boolean);
+
+  for (const line of merged) {
+    out.push(line);
   }
 
-  if (frame === "growth") {
-    return [
-      `That is where the next step starts looking real`,
-      `That is not a bad way to move your life forward`,
-      `That is usually when the decision starts making sense`
-    ];
-  }
-
-  if (frame === "problem") {
-    return [
-      `That is usually when the right call gets obvious`,
-      `That is not exactly the kind of thing you keep putting off`,
-      `That is where the next move starts making itself`
-    ];
-  }
-
-  if (frame === "value") {
-    return [
-      `That is usually all the convincing a person needs`,
-      `That is when the smart money stops waiting`,
-      `That is not a bad reason to make the move`
-    ];
-  }
-
-  if (frame === "confession") {
-    return [
-      `Honestly, the straight answer is doing a lot of work here`,
-      `At some point, brutal honesty becomes the selling point`,
-      `You may not trust the pitch, but at least the pitch is honest`
-    ];
-  }
-
-  return [
-    `That is where the whole thing starts to land`,
-    `That is usually enough to get a person moving`,
-    `That is when the case starts making itself`
-  ];
+  const maxAct2 = duration === 15 ? 3 : duration === 30 ? 5 : 7;
+  return out.slice(0, maxAct2);
 }
 
 function closing(sub, input, parsed) {
   const rawCta = s(input.cta);
-
-  if (rawCta) {
-    return speakable(rawCta);
-  }
+  if (rawCta) return speakable(rawCta);
 
   const contact = parsed.contact[0];
   if (contact) return contact;
@@ -575,91 +537,24 @@ function closing(sub, input, parsed) {
 
 function enrichClose(close, parsed, duration) {
   const out = [];
+  if (duration < 30) return out;
 
-  if (duration >= 30 && parsed.contact.length > 0) {
-    for (const item of parsed.contact) {
-      if (s(item).toLowerCase() === s(close).toLowerCase()) continue;
-      out.push(item);
-      if (duration === 30) break;
-      if (out.length >= 2) break;
-    }
+  for (const item of parsed.contact) {
+    if (s(item).toLowerCase() === s(close).toLowerCase()) continue;
+    out.push(item);
+    break;
   }
 
   return out;
 }
 
-function expansionPool(sub, frame) {
-  if (frame === "experience") {
-    return [
-      `Bring the family`,
-      `Make plans now`,
-      `Once you hear that, the day starts to picture itself`,
-      `That is usually enough to fill a calendar`,
-      `Good events have a way of making the decision for you`
-    ];
-  }
-
-  if (frame === "growth") {
-    return [
-      `The right opportunity has a way of clearing the fog`,
-      `That is usually when hesitation starts losing ground`,
-      `A better future sounds different when it feels possible`,
-      `That is when the next chapter stops feeling abstract`,
-      `Real flexibility tends to get a person's attention`
-    ];
-  }
-
-  if (frame === "problem") {
-    return [
-      `At that point, waiting is not exactly a strategy`,
-      `This is when the practical move starts sounding good`,
-      `Most people know the answer before they say it out loud`,
-      `Eventually, the fix becomes the plan`,
-      `That is usually how the delay comes to an end`
-    ];
-  }
-
-  if (frame === "value") {
-    return [
-      `The right offer has a way of shortening the conversation`,
-      `That tends to get a person's attention`,
-      `A smart move usually looks smart pretty quickly`,
-      `That is where browsing starts to end`,
-      `You can only think about it for so long`
-    ];
-  }
-
-  if (frame === "confession") {
-    return [
-      `They did not exactly bury the lead`,
-      `There is no confusion in the pitch`,
-      `You cannot say they oversold it`,
-      `There is a weird amount of confidence in saying the quiet part out loud`,
-      `The straight-faced nonsense is doing its job`
-    ];
-  }
-
-  return [
-    `That starts to make the case`,
-    `Now the picture gets clearer`,
-    `That is usually enough to get attention`,
-    `A good message usually gets simpler as it goes`,
-    `That is when the next step gets easier to see`
-  ];
-}
-
 function expand(base, duration, sub, frame) {
-  const wordTarget = TARGET_WORDS[duration];
-  const lineTarget = TARGET_LINES[duration];
+  const target = TARGET_LINES[duration];
   const script = [...base];
   const extras = expansionPool(sub, frame);
 
   for (const line of extras) {
-    const enoughWords = totalWords(script) >= wordTarget.min;
-    const enoughLines = script.length >= lineTarget.min;
-
-    if (enoughWords && enoughLines) break;
-
+    if (script.length >= target.min) break;
     script.splice(Math.max(script.length - 1, 1), 0, line);
   }
 
@@ -667,14 +562,21 @@ function expand(base, duration, sub, frame) {
 }
 
 function trimToMaxLines(script, duration) {
-  const maxLines = TARGET_LINES[duration].max;
-
-  if (script.length <= maxLines) return script;
+  const max = TARGET_LINES[duration].max;
+  if (script.length <= max) return script;
 
   const last = script[script.length - 1];
-  const body = script.slice(0, maxLines - 1);
-
+  const body = script.slice(0, max - 1);
   return [...body, last];
+}
+
+function normalizeOutput(script) {
+  return unique(
+    script
+      .map(speakable)
+      .map(cleanupText)
+      .filter(Boolean)
+  ).map(ensurePeriod);
 }
 
 function buildScript(input, duration) {
@@ -682,31 +584,22 @@ function buildScript(input, duration) {
   const frame = deriveFrame(input);
   const parsed = parseBrief(input);
 
-  const act1 = buildAct1(sub, input, frame, duration);
-  const act2 = buildAct2(parsed, duration);
-  const act3 = pick(act3Pool(sub, frame));
+  const act1 = buildAct1(sub, input, frame);
+  const act2 = buildAct2(parsed, frame, sub, duration);
+  const act3 = [pick(act3Pool(sub, frame))];
   const close = closing(sub, input, parsed);
   const closeSupport = enrichClose(close, parsed, duration);
 
   let script = [
     ...act1,
     ...act2,
-    act3,
+    ...act3,
     ...closeSupport,
     close
   ].filter(Boolean);
 
   script = expand(script, duration, sub, frame);
-
-  script = unique(
-    script
-      .map(speakable)
-      .map(cleanupText)
-      .map(cleanJoins)
-      .filter(Boolean)
-  );
-
-  script = script.map(ensurePeriod);
+  script = normalizeOutput(script);
   script = trimToMaxLines(script, duration);
 
   return script.join("\n");
