@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_ENGINE_V10_SUBJECT_FIRST]]";
+const VERSION = "[[DEX_ENGINE_V11_BRIEF_FIRST]]";
 
 const TARGET_LINES = {
-  15: { min: 5, max: 7 },
-  30: { min: 8, max: 10 },
-  60: { min: 12, max: 15 },
+  15: { min: 4, max: 6 },
+  30: { min: 7, max: 9 },
+  60: { min: 10, max: 13 },
 };
 
 function s(v) {
@@ -71,7 +71,16 @@ function cleanupText(text) {
     .replace(/\s*-\s*/g, " — ")
     .replace(/([a-z])\.([A-Z])/g, "$1. $2")
     .replace(/([a-z])\.call\b/gi, "$1. call")
-    .replace(/\bNLINE\b/gi, "online")
+    .replace(/\bYOYOU'?RE\b/gi, "YOU'RE")
+    .replace(/\bYOU'?RE\b(?=\s+SCHEDULE)/gi, "YOUR")
+    .replace(/\bSHEDULE\b/gi, "SCHEDULE")
+    .replace(/\bEDUCATIN\b/gi, "EDUCATION")
+    .replace(/\bEFECTIVE\b/gi, "EFFECTIVE")
+    .replace(/\bNLINE\b/gi, "ONLINE")
+    .replace(/\bRG\b/gi, "ORG")
+    .replace(/\bMAESTR\b/gi, "MAESTRO")
+    .replace(/\bMAESTO\b/gi, "MAESTRO")
+    .replace(/\bn\b(?=\s+formal\b)/gi, "no")
     .trim();
 }
 
@@ -155,7 +164,12 @@ function speakDates(text) {
 function speakUrls(text) {
   return text.replace(
     /\b(?:https?:\/\/)?(?:www\.)?([a-z0-9-]+)\.(com|net|org|io|co|fm|tv|us|biz|info)\b/gi,
-    (_, domain, tld) => `${domain.toLowerCase().split("").join(" ")} dot ${tld.toLowerCase()}`
+    (_, domain, tld) => {
+      if (domain.length <= 8 && /^[a-z]+$/i.test(domain)) {
+        return `${domain.toLowerCase().split("").join(" ")} dot ${tld.toLowerCase()}`;
+      }
+      return `${domain.toLowerCase()} dot ${tld.toLowerCase()}`;
+    }
   );
 }
 
@@ -179,9 +193,7 @@ function speakNumbers(text) {
 
 function speakable(line) {
   let out = cleanupText(line);
-
   if (!out) return "";
-  if (out.toLowerCase() === "kids under 8 ride free") return "Kids under eight ride free";
 
   out = out.replace(/\s*&\s*/g, " and ");
   out = speakMoney(out);
@@ -214,7 +226,7 @@ function splitDetailFragments(text) {
         .filter(Boolean)
     );
 
-  return unique(chunks.map(speakable).map(cleanupText).filter(Boolean));
+  return unique(chunks.map(cleanupText).filter(Boolean));
 }
 
 function looksLikeQuestion(text) {
@@ -232,18 +244,26 @@ function looksLikeDateOrTime(text) {
   );
 }
 
+function looksLikeUrl(text) {
+  return /\b(?:https?:\/\/|www\.)|\b[a-z0-9-]+\.(com|net|org|io|co|fm|tv|us|biz|info)\b/i.test(s(text));
+}
+
+function looksLikePhone(text) {
+  return /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(s(text));
+}
+
+function looksLikeAddress(text) {
+  return /\b(street|st|avenue|ave|road|rd|boulevard|blvd|drive|dr|lane|ln|way|court|ct)\b/i.test(s(text));
+}
+
 function looksLikeContact(text) {
   const x = s(text).toLowerCase();
   return (
-    /\b(call|visit|log on|check out|book now|learn more|join us|get tickets|register|apply)\b/.test(x) ||
-    /\b(?:https?:\/\/|www\.)/.test(x) ||
-    /\b[a-z0-9-]+\.(com|net|org|io|co|fm|tv|us|biz|info)\b/.test(x) ||
-    /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(x)
+    /\b(call|visit|log on|check out|book now|learn more|join us|get tickets|register|apply|stop by)\b/.test(x) ||
+    looksLikeUrl(x) ||
+    looksLikePhone(x) ||
+    looksLikeAddress(x)
   );
-}
-
-function looksLikeSentence(text) {
-  return /[.!?]$/.test(s(text));
 }
 
 function deriveFrame(input) {
@@ -371,61 +391,19 @@ function act3Pool(sub, frame) {
   ];
 }
 
-function expansionPool(sub, frame) {
-  if (frame === "experience") {
-    return [
-      "Bring the family",
-      "Make plans now"
-    ];
-  }
-
-  if (frame === "growth") {
-    return [
-      "The right opportunity has a way of clearing the fog",
-      "Real flexibility tends to get a person's attention"
-    ];
-  }
-
-  if (frame === "problem") {
-    return [
-      "At that point, waiting is not exactly a strategy",
-      "Eventually, the fix becomes the plan"
-    ];
-  }
-
-  if (frame === "value") {
-    return [
-      "That tends to get a person's attention",
-      "You can only think about it for so long"
-    ];
-  }
-
-  if (frame === "confession") {
-    return [
-      "They did not exactly bury the lead",
-      "There is no confusion in the pitch"
-    ];
-  }
-
-  return [
-    "That starts to make the case",
-    "Now the picture gets clearer"
-  ];
-}
-
 function fragmentToSentence(line, frame, sub) {
   const raw = cleanupText(line);
   const lower = raw.toLowerCase();
 
   if (!raw) return "";
-  if (looksLikeSentence(raw) || looksLikeQuestion(raw) || looksLikeDateOrTime(raw) || looksLikeContact(raw)) {
+  if (looksLikeQuestion(raw) || looksLikeDateOrTime(raw) || looksLikeContact(raw) || /[.!?]$/.test(raw)) {
     return raw;
   }
 
   if (frame === "confession") {
     if (/lost money/.test(lower)) return "We're not gonna find your lost money";
     if (/jail/.test(lower)) return "We can't get you out of jail";
-    if (/will/.test(lower)) return "We can't write your will";
+    if (/will\b/.test(lower)) return "We can't write your will";
     if (/lawyer/.test(lower)) return "We're not even real lawyers";
     if (/education/.test(lower)) return "We have no formal education";
     if (/stooge/.test(lower)) return "We're just a couple of stooges";
@@ -436,138 +414,146 @@ function fragmentToSentence(line, frame, sub) {
     if (/software engineer/.test(lower)) return "Software engineer?";
     if (/building a business/.test(lower)) return "Building a business?";
     if (/schedule/.test(lower)) return "Your schedule isn't fixed";
-    if (/education/.test(lower) && /shouldn't/.test(lower)) return "Your education shouldn't be either";
+    if (/education/.test(lower) && /shouldn/.test(lower)) return "Your education shouldn't be either";
     if (/attend classes/.test(lower)) return "Attend classes on your time";
     if (/career/.test(lower) && /ai/.test(lower)) return `${sub} is the most effective way to build your career with AI`;
     if (/accredited/.test(lower)) return `${sub} offers accredited course study`;
+    if (/financial aid/.test(lower)) return `${sub} has financial aid available`;
+    if (/free laptop/.test(lower)) return "Earn a free laptop for your studies";
   }
 
   if (frame === "experience") {
-    if (/food|crafts|games|music/.test(lower) && wordCount(raw) <= 8) {
-      return raw.charAt(0).toUpperCase() + raw.slice(1);
-    }
+    if (/bring the family/.test(lower)) return "Bring the family";
+    if (/make plans now/.test(lower)) return "Make plans now";
   }
 
   if (frame === "value") {
-    if (/financial aid/.test(lower)) return `${sub} has financial aid available`;
     if (/delivery/.test(lower)) return "And yes — they will deliver it";
+    if (/financial aid/.test(lower)) return `${sub} has financial aid available`;
   }
 
-  if (wordCount(raw) <= 4) {
+  if (wordCount(raw) <= 5) {
     return raw.charAt(0).toUpperCase() + raw.slice(1);
   }
 
   return raw;
 }
 
-function parseBrief(input) {
-  const details = splitDetailFragments(input.details);
+function parseBrief(input, frame, sub) {
+  const details = splitDetailFragments(input.details).map((x) => fragmentToSentence(x, frame, sub));
   const mustSay = splitDetailFragments(input.mustSay);
-  const all = unique([...details, ...mustSay]);
+  const all = unique([...details, ...mustSay]).filter(Boolean);
 
-  const questions = [];
-  const schedule = [];
-  const contact = [];
-  const claims = [];
-  const misc = [];
+  const buckets = {
+    questions: [],
+    schedule: [],
+    contact: [],
+    info: [],
+    mustSay: mustSay.map(cleanupText).filter(Boolean),
+  };
 
   for (const line of all) {
-    if (looksLikeContact(line)) {
-      contact.push(line);
-    } else if (looksLikeQuestion(line)) {
-      questions.push(line);
+    if (buckets.mustSay.some((m) => s(m).toLowerCase() === s(line).toLowerCase())) continue;
+
+    if (looksLikeQuestion(line)) {
+      buckets.questions.push(line);
     } else if (looksLikeDateOrTime(line)) {
-      schedule.push(line);
-    } else if (looksLikeSentence(line)) {
-      claims.push(line);
+      buckets.schedule.push(line);
+    } else if (looksLikeContact(line)) {
+      buckets.contact.push(line);
     } else {
-      misc.push(line);
+      buckets.info.push(line);
     }
   }
 
-  return { questions, schedule, contact, claims, misc, all };
+  return buckets;
 }
 
 function buildAct1(sub, input, frame) {
   const out = [pick(openingPool(sub, frame))];
-  const offer = s(input.offer) ? speakable(input.offer) : "";
+  const offer = s(input.offer) ? fragmentToSentence(input.offer, frame, sub) : "";
 
   if (offer) {
-    if (frame === "confession") {
+    if (frame === "growth" && /financial aid/i.test(offer)) {
+      out.push(`${sub} has financial aid available`);
+    } else if (frame === "confession") {
       out.push(offer);
-    } else if (/financial aid/i.test(offer) && frame === "growth") {
-      out.push(`${sub} has ${offer.toLowerCase()}`);
-    } else if (wordCount(offer) <= 8) {
+    } else if (wordCount(offer) <= 10 && !/[.!?]$/.test(offer)) {
       out.push(`${sub} has ${offer.toLowerCase()}`);
     } else {
       out.push(offer);
     }
   }
 
-  return out.filter(Boolean);
+  return unique(out.filter(Boolean));
 }
 
-function buildAct2(parsed, frame, sub, duration) {
+function buildAct2(parsed, duration) {
   const out = [];
-  const transformedMisc = parsed.misc.map((x) => fragmentToSentence(x, frame, sub));
-  const transformedClaims = parsed.claims.map((x) => fragmentToSentence(x, frame, sub));
 
-  const questions = parsed.questions.map((x) => fragmentToSentence(x, frame, sub));
-  const schedule = parsed.schedule.map((x) => fragmentToSentence(x, frame, sub));
+  const qLimit = duration === 15 ? 1 : 2;
+  for (const q of parsed.questions.slice(0, qLimit)) out.push(q);
 
-  const merged = unique([...questions, ...transformedClaims, ...transformedMisc, ...schedule]).filter(Boolean);
+  const infoLimit = duration === 15 ? 2 : duration === 30 ? 4 : 5;
+  for (const item of parsed.info.slice(0, infoLimit)) out.push(item);
 
-  for (const line of merged) {
-    out.push(line);
-  }
+  const scheduleLimit = duration === 60 ? 2 : 1;
+  for (const item of parsed.schedule.slice(0, scheduleLimit)) out.push(item);
 
-  const maxAct2 = duration === 15 ? 3 : duration === 30 ? 5 : 7;
-  return out.slice(0, maxAct2);
+  return unique(out);
+}
+
+function buildAct3(sub, frame) {
+  return pick(act3Pool(sub, frame));
 }
 
 function closing(sub, input, parsed) {
   const rawCta = s(input.cta);
-  if (rawCta) return speakable(rawCta);
+  if (rawCta) return cleanupText(rawCta);
 
-  const contact = parsed.contact[0];
-  if (contact) return contact;
+  if (parsed.contact.length) return parsed.contact[0];
 
   return `Visit ${sub}`;
 }
 
-function enrichClose(close, parsed, duration) {
-  const out = [];
-  if (duration < 30) return out;
+function buildFill(parsed, chosen, duration) {
+  if (duration === 15) return [];
 
-  for (const item of parsed.contact) {
-    if (s(item).toLowerCase() === s(close).toLowerCase()) continue;
-    out.push(item);
-    break;
+  const used = new Set(chosen.map((x) => s(x).toLowerCase()));
+  const fill = [];
+
+  const candidates = [
+    ...parsed.contact,
+    ...parsed.schedule,
+    ...parsed.info,
+  ];
+
+  for (const item of candidates) {
+    const key = s(item).toLowerCase();
+    if (!key || used.has(key)) continue;
+    fill.push(item);
+
+    if (duration === 30 && fill.length >= 1) break;
+    if (duration === 60 && fill.length >= 2) break;
   }
 
-  return out;
+  return fill;
 }
 
-function expand(base, duration, sub, frame) {
+function trimToTarget(script, duration) {
   const target = TARGET_LINES[duration];
-  const script = [...base];
-  const extras = expansionPool(sub, frame);
 
-  for (const line of extras) {
-    if (script.length >= target.min) break;
-    script.splice(Math.max(script.length - 1, 1), 0, line);
+  if (script.length < target.min) return script;
+  if (script.length <= target.max) return script;
+
+  const close = script[script.length - 1];
+  const beforeClose = script.slice(0, -1);
+
+  while (beforeClose.length + 1 > target.max) {
+    beforeClose.pop();
   }
 
-  return script;
-}
-
-function trimToMaxLines(script, duration) {
-  const max = TARGET_LINES[duration].max;
-  if (script.length <= max) return script;
-
-  const last = script[script.length - 1];
-  const body = script.slice(0, max - 1);
-  return [...body, last];
+  return [...beforeClose, close];
 }
 
 function normalizeOutput(script) {
@@ -582,25 +568,34 @@ function normalizeOutput(script) {
 function buildScript(input, duration) {
   const sub = speakable(subject(input));
   const frame = deriveFrame(input);
-  const parsed = parseBrief(input);
+  const parsed = parseBrief(input, frame, sub);
 
   const act1 = buildAct1(sub, input, frame);
-  const act2 = buildAct2(parsed, frame, sub, duration);
-  const act3 = [pick(act3Pool(sub, frame))];
+  const act2 = buildAct2(parsed, duration);
+  const act3 = [buildAct3(sub, frame)];
   const close = closing(sub, input, parsed);
-  const closeSupport = enrichClose(close, parsed, duration);
+
+  let chosen = [...act1, ...act2, ...act3, close];
+  const fill = buildFill(parsed, chosen, duration);
+
+  let mustSay = parsed.mustSay;
+  if (duration === 15 && mustSay.length > 1) {
+    mustSay = mustSay.slice(0, 1);
+  } else if (duration === 30 && mustSay.length > 2) {
+    mustSay = mustSay.slice(0, 2);
+  }
 
   let script = [
     ...act1,
     ...act2,
+    ...fill,
     ...act3,
-    ...closeSupport,
-    close
+    close,
+    ...mustSay,
   ].filter(Boolean);
 
-  script = expand(script, duration, sub, frame);
   script = normalizeOutput(script);
-  script = trimToMaxLines(script, duration);
+  script = trimToTarget(script, duration);
 
   return script.join("\n");
 }
