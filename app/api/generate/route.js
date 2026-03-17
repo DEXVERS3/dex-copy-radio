@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const VERSION = "[[DEX_ENGINE_V7_2_PREMISE_AWARE]]";
+const VERSION = "[[DEX_ENGINE_V8_STORY_ARC]]";
 
 const TARGET_WORDS = {
   15: { min: 28, max: 42 },
-  30: { min: 60, max: 85 },
-  60: { min: 125, max: 155 },
+  30: { min: 55, max: 85 },
+  60: { min: 115, max: 155 },
 };
 
 const TARGET_LINES = {
@@ -56,7 +56,7 @@ function pickDuration(body) {
 }
 
 function subject(input) {
-  return s(input.brand) || s(input.offer) || "the event";
+  return s(input.brand) || s(input.offer) || "the business";
 }
 
 function wordCount(text) {
@@ -197,6 +197,7 @@ function cleanupText(text) {
     .replace(/\s+,/g, ",")
     .replace(/,\s*,+/g, ", ")
     .replace(/\s*\.\s*\./g, ".")
+    .replace(/\s*-\s*/g, " — ")
     .replace(/\bn\b(?=\s+formal\b)/gi, "no")
     .replace(/([a-z])\.([A-Z])/g, "$1. $2")
     .replace(/([a-z])\.call\b/gi, "$1. call")
@@ -211,6 +212,7 @@ function cleanJoins(line) {
     .replace(/\.\s+then\s+/gi, ". ")
     .replace(/\s+and\s+and\s+/gi, " and ")
     .replace(/\.\s+\./g, ".")
+    .replace(/,\./g, ".")
     .trim();
 }
 
@@ -256,10 +258,6 @@ function splitDetailFragments(text) {
   return unique(chunks.map(speakable).map(cleanupText).filter(Boolean));
 }
 
-function details(input) {
-  return splitDetailFragments(input.details);
-}
-
 function joinNatural(parts) {
   const list = parts.map(cleanupText).filter(Boolean);
 
@@ -277,266 +275,223 @@ function looksLikeDateOrTime(text) {
   return (
     /\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/.test(x) ||
     /\b\d{1,2}(am|pm)\b/.test(x) ||
+    /\b\d{1,2}:\d{2}\b/.test(x) ||
     /\bnoon\b/.test(x) ||
+    /\bmidnight\b/.test(x) ||
     /\bdaily\b/.test(x) ||
     /\bsaturday\b|\bsunday\b|\bmonday\b|\btuesday\b|\bwednesday\b|\bthursday\b|\bfriday\b/.test(x)
   );
 }
 
-function looksLikeListItem(text) {
+function looksLikeContact(text) {
   const x = s(text).toLowerCase();
-  return !looksLikeDateOrTime(x);
+
+  return (
+    /\b(?:call|visit|log on|check out|book now|learn more|join us|get tickets|register|apply)\b/.test(x) ||
+    /\b(?:https?:\/\/|www\.)/.test(x) ||
+    /\b[a-z0-9-]+\.(com|net|org|io|co|fm|tv|us|biz|info)\b/.test(x) ||
+    /\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b/.test(x)
+  );
 }
 
-function classifyPremise(input) {
-  const blob = [
-    s(input.brand),
-    s(input.offer),
-    s(input.details),
-    s(input.cta)
-  ]
+function looksLikeQuestion(text) {
+  return /\?$/.test(s(text));
+}
+
+function looksLikeClaim(text) {
+  const x = s(text).toLowerCase();
+  return /\b(is|are|offers|has|provides|features|includes|available|accredited|award-winning|trusted|effective)\b/.test(x);
+}
+
+function looksLikeAudienceLine(text) {
+  const x = s(text).toLowerCase();
+  return /\byou\b|\byour\b|\bfor\b/.test(x);
+}
+
+function deriveFrame(input) {
+  const blob = [input.brand, input.offer, input.details, input.cta, input.mustSay]
+    .map(s)
     .join(" ")
     .toLowerCase();
 
-  const absurdWords = [
-    "unreliable",
-    "stooges",
-    "not even real",
-    "not gonna",
-    "probably not getting your money's worth",
-    "couple of stooges"
-  ];
+  if (
+    /unreliable|stooges|not even real|not gonna|probably not getting your money's worth|confession/.test(blob)
+  ) {
+    return "confession";
+  }
 
-  const eventWords = [
-    "festival", "fair", "concert", "show", "parade", "celebration",
-    "weekend", "crafts", "live music", "ride free", "admission",
-    "tickets", "food", "games", "event", "annual", "petting zoo"
-  ];
+  if (
+    /university|college|school|course|career|education|class|classes|financial aid|degree|accredited|training/.test(blob)
+  ) {
+    return "growth";
+  }
 
-  const retailWords = [
-    "sale", "save", "clearance", "discount", "off", "sectional",
-    "furniture", "mattress", "inventory", "financing", "showroom",
-    "weekend only", "deliver", "delivery available", "shop"
-  ];
+  if (
+    /festival|fair|concert|show|parade|celebration|event|food|music|games|admission|tickets|ride free/.test(blob)
+  ) {
+    return "experience";
+  }
 
-  const serviceWords = [
-    "service", "repair", "law", "lawyer", "attorney", "legal",
-    "clinic", "doctor", "dentist", "roofing", "plumbing", "hvac",
-    "insurance", "consultation", "call today", "book now"
-  ];
+  if (
+    /sale|discount|save|off|clearance|deal|financing|inventory|showroom|mattress|sectional|delivery/.test(blob)
+  ) {
+    return "value";
+  }
 
-  if (absurdWords.some((w) => blob.includes(w))) return "absurd";
-  if (eventWords.some((w) => blob.includes(w))) return "event";
-  if (retailWords.some((w) => blob.includes(w))) return "retail";
-  if (serviceWords.some((w) => blob.includes(w))) return "service";
+  if (
+    /service|repair|law|lawyer|attorney|legal|clinic|doctor|dentist|roofing|plumbing|hvac|insurance|consultation/.test(blob)
+  ) {
+    return "problem";
+  }
 
   return "general";
 }
 
-function opening(sub, input, duration, premise) {
-  const offer = s(input.offer) ? speakable(input.offer) : "";
-
-  if (premise === "event") {
-    if (duration === 60) {
-      if (offer) {
-        return [
-          "You can feel certain weekends coming before they get here",
-          `${sub} is one of them, and ${offer.toLowerCase()}`
-        ];
-      }
-
-      return [
-        "You can feel certain weekends coming before they get here",
-        `${sub} is one of them`
-      ];
-    }
-
-    if (offer) {
-      return [
-        pick([
-          `This is your invitation to ${sub}`,
-          `${sub} is one of those weekends people make room for`
-        ]),
-        offer
-      ];
-    }
-
+function openingPool(sub, frame) {
+  if (frame === "experience") {
     return [
-      pick([
-        `This is your invitation to ${sub}`,
-        `${sub} is one of those events people look forward to`
-      ])
+      `You can feel certain days coming before they get here`,
+      `${sub} is the kind of thing people make room for`,
+      `Some plans sound good the second you hear them`
     ];
   }
 
-  if (premise === "retail") {
-    if (offer) {
-      return [
-        pick([
-          "Sooner or later the hunt for a deal gets serious",
-          "Funny how the right deal usually shows up when you need it",
-          "There comes a point where looking turns into buying"
-        ]),
-        `${sub} has ${offer.toLowerCase()}`
-      ];
-    }
-
+  if (frame === "growth") {
     return [
-      pick([
-        "Sooner or later the hunt for a deal gets serious",
-        "Funny how the right deal usually shows up when you need it",
-        `That is usually when people end up at ${sub}`
-      ])
+      `At some point, the next step starts to matter`,
+      `Sooner or later, the question becomes what comes next`,
+      `There comes a point when waiting starts to feel expensive`
     ];
   }
 
-  if (premise === "service") {
-    if (offer) {
-      return [
-        pick([
-          "Usually the problem is not whether you need help",
-          "There comes a point when putting it off stops helping",
-          "Most people wait until the issue refuses to wait with them"
-        ]),
-        `${sub} has ${offer.toLowerCase()}`
-      ];
-    }
-
+  if (frame === "problem") {
     return [
-      pick([
-        "Usually the problem is not whether you need help",
-        "There comes a point when putting it off stops helping",
-        `That is usually when people call ${sub}`
-      ])
+      `Most people wait a little longer than they should`,
+      `There comes a point when putting it off stops helping`,
+      `Usually the problem is not whether it matters`
     ];
   }
 
-  if (premise === "absurd") {
-    const first = pick([
-      `Well, at least ${sub} is being honest`,
-      `There is something to be said for a business that tells you exactly what it is`,
-      `You do have to admire a business that opens with the bad news`,
+  if (frame === "value") {
+    return [
+      `Sooner or later, value gets hard to ignore`,
+      `There comes a point when the smart move gets obvious`,
+      `Funny how the right offer changes the math`
+    ];
+  }
+
+  if (frame === "confession") {
+    return [
       `Not every business leads with a confession, but here we are`,
-      `There is a certain charm in telling people not to expect much`
-    ]);
-
-    if (offer) return [first, offer];
-    return [first];
-  }
-
-  if (offer) {
-    return [
-      pick([
-        `Here is the thing about ${sub}`,
-        `Sooner or later people notice ${sub}`,
-        `This is where ${sub} starts to make sense`
-      ]),
-      offer
+      `There is something to be said for a business that tells you exactly what it is`,
+      `Well, at least ${sub} is being honest`
     ];
   }
 
   return [
-    pick([
-      `Here is the thing about ${sub}`,
-      `Sooner or later people notice ${sub}`,
-      `This is where ${sub} starts to make sense`
-    ])
+    `Here is the thing about ${sub}`,
+    `Sooner or later, people start paying attention`,
+    `Sometimes the case starts making itself`
   ];
 }
 
-function detailLead(premise, sub) {
-  if (premise === "event") {
-    return pick([
-      "You hear that and the day starts to picture itself",
-      "That is usually enough to make the plan for you",
-      `That is how days like ${sub} start coming together`
-    ]);
+function buildAct1(sub, input, frame, duration) {
+  const offer = s(input.offer) ? speakable(input.offer) : "";
+  const opener = pick(openingPool(sub, frame));
+  const out = [opener];
+
+  if (offer) {
+    if (frame === "experience") {
+      out.push(`${sub} has ${offer.toLowerCase()}`);
+    } else if (frame === "growth") {
+      out.push(`${sub} has ${offer.toLowerCase()}`);
+    } else if (frame === "problem") {
+      out.push(`${sub} has ${offer.toLowerCase()}`);
+    } else if (frame === "value") {
+      out.push(`${sub} has ${offer.toLowerCase()}`);
+    } else if (frame === "confession") {
+      out.push(offer);
+    } else {
+      out.push(offer);
+    }
+  } else if (duration === 60 && frame !== "confession") {
+    out.push(`${sub} is where that starts to come together`);
   }
 
-  if (premise === "retail") {
-    return pick([
-      "Now we are getting somewhere",
-      "That usually gets a person's attention",
-      "And that is where the decision starts getting easier"
-    ]);
-  }
-
-  if (premise === "service") {
-    return pick([
-      "That is the part people actually need to hear",
-      "That is when the right call starts to look obvious",
-      "At that point, the decision is not exactly mysterious"
-    ]);
-  }
-
-  if (premise === "absurd") {
-    return pick([
-      "And just to be clear, they are not overselling this thing",
-      "There is no mystery here, which is almost refreshing",
-      "You do have to respect the honesty"
-    ]);
-  }
-
-  return pick([
-    "That starts to paint the picture",
-    "That is where it starts to make sense",
-    "Now the whole thing starts to come together"
-  ]);
+  return out.filter(Boolean);
 }
 
-function buildSupportLines(det, duration, premise, sub) {
-  if (!det.length) return [];
+function parseBrief(input) {
+  const detailLines = splitDetailFragments(input.details);
+  const mustSayLines = splitDetailFragments(input.mustSay);
 
-  const maxLines = duration === 15 ? 2 : duration === 30 ? 4 : 7;
-  const out = [detailLead(premise, sub)];
+  const all = unique([...detailLines, ...mustSayLines]);
+
+  const questions = [];
+  const schedule = [];
+  const contact = [];
+  const claims = [];
+  const audience = [];
+  const misc = [];
+
+  for (const line of all) {
+    if (looksLikeContact(line)) {
+      contact.push(line);
+    } else if (looksLikeQuestion(line)) {
+      questions.push(line);
+    } else if (looksLikeDateOrTime(line)) {
+      schedule.push(line);
+    } else if (looksLikeClaim(line)) {
+      claims.push(line);
+    } else if (looksLikeAudienceLine(line)) {
+      audience.push(line);
+    } else {
+      misc.push(line);
+    }
+  }
+
+  return {
+    questions,
+    schedule,
+    contact,
+    claims,
+    audience,
+    misc,
+    all,
+  };
+}
+
+function buildAct2(parsed, duration) {
+  const out = [];
+
+  for (const q of parsed.questions) {
+    out.push(q);
+    if (duration === 15 && out.length >= 1) break;
+    if (duration === 30 && out.length >= 2) break;
+    if (duration === 60 && out.length >= 2) break;
+  }
+
+  const supporting = [...parsed.claims, ...parsed.audience, ...parsed.misc];
 
   let i = 0;
+  while (i < supporting.length) {
+    const current = supporting[i];
+    const next = supporting[i + 1];
 
-  while (i < det.length && out.length < maxLines) {
-    const current = det[i];
-    const next = det[i + 1];
-    const remainingLines = maxLines - out.length;
+    const canPair =
+      next &&
+      !looksLikeQuestion(current) &&
+      !looksLikeQuestion(next) &&
+      !looksLikeDateOrTime(current) &&
+      !looksLikeDateOrTime(next) &&
+      !looksLikeContact(current) &&
+      !looksLikeContact(next) &&
+      !/[.!?]/.test(current) &&
+      !/[.!?]/.test(next) &&
+      wordCount(current) <= 7 &&
+      wordCount(next) <= 7;
 
-    if (remainingLines === 1) {
-      out.push(joinNatural(det.slice(i)));
-      break;
-    }
-
-    if (premise === "event" && looksLikeDateOrTime(current)) {
-      out.push(current);
-      i += 1;
-      continue;
-    }
-
-    if (premise === "event" && looksLikeListItem(current) && looksLikeListItem(next)) {
-      out.push(joinNatural([current, next]));
-      i += 2;
-      continue;
-    }
-
-    if (duration === 15) {
-      if (next && !looksLikeDateOrTime(current) && !looksLikeDateOrTime(next)) {
-        out.push(joinNatural([current, next]));
-        i += 2;
-      } else {
-        out.push(current);
-        i += 1;
-      }
-      continue;
-    }
-
-    if (duration === 30) {
-      if (next && !looksLikeDateOrTime(current) && !looksLikeDateOrTime(next)) {
-        out.push(joinNatural([current, next]));
-        i += 2;
-      } else {
-        out.push(current);
-        i += 1;
-      }
-      continue;
-    }
-
-    if (next && !looksLikeDateOrTime(current) && !looksLikeDateOrTime(next)) {
+    if (canPair) {
       out.push(joinNatural([current, next]));
       i += 2;
     } else {
@@ -545,232 +500,159 @@ function buildSupportLines(det, duration, premise, sub) {
     }
   }
 
-  return unique(out);
+  for (const item of parsed.schedule) {
+    out.push(item);
+  }
+
+  const maxAct2 =
+    duration === 15 ? 2 :
+    duration === 30 ? 4 :
+    7;
+
+  return unique(out).slice(0, maxAct2);
 }
 
-function act3(sub, premise) {
-  if (premise === "event") {
-    return pick([
-      "That is the kind of weekend people look forward to",
-      "That sounds like a pretty good way to spend a day",
-      `That is why people make time for ${sub}`,
-      `That is what makes ${sub} worth the trip`
-    ]);
+function act3Pool(sub, frame) {
+  if (frame === "experience") {
+    return [
+      `That is the kind of day people remember`,
+      `That is what makes ${sub} worth showing up for`,
+      `That is how plans stop sounding hypothetical`
+    ];
   }
 
-  if (premise === "retail") {
-    return pick([
-      `That is usually how people end up at ${sub}`,
-      "That is not a bad reason to make the move",
-      "That is when the smart money stops waiting",
-      "That is usually all the convincing a person needs"
-    ]);
+  if (frame === "growth") {
+    return [
+      `That is where the next step starts looking real`,
+      `That is not a bad way to move your life forward`,
+      `That is usually when the decision starts making sense`
+    ];
   }
 
-  if (premise === "service") {
-    return pick([
-      `That is usually why people call ${sub}`,
-      "That is the moment the right move gets pretty obvious",
-      "That is not exactly the kind of thing you keep putting off",
-      "That is usually when the next step makes itself"
-    ]);
+  if (frame === "problem") {
+    return [
+      `That is usually when the right call gets obvious`,
+      `That is not exactly the kind of thing you keep putting off`,
+      `That is where the next move starts making itself`
+    ];
   }
 
-  if (premise === "absurd") {
-    return pick([
-      `That is why people make time for ${sub}`,
-      "Honestly, the straight answer is doing a lot of work here",
-      "You may not trust the pitch, but at least the pitch is honest",
-      "At some point, brutal honesty becomes the selling point"
-    ]);
+  if (frame === "value") {
+    return [
+      `That is usually all the convincing a person needs`,
+      `That is when the smart money stops waiting`,
+      `That is not a bad reason to make the move`
+    ];
   }
 
-  return pick([
-    `That is usually how people end up at ${sub}`,
-    "That is where the whole thing starts to land",
-    "That is usually all the convincing a person needs",
-    "That is when the decision starts to make itself"
-  ]);
+  if (frame === "confession") {
+    return [
+      `Honestly, the straight answer is doing a lot of work here`,
+      `At some point, brutal honesty becomes the selling point`,
+      `You may not trust the pitch, but at least the pitch is honest`
+    ];
+  }
+
+  return [
+    `That is where the whole thing starts to land`,
+    `That is usually enough to get a person moving`,
+    `That is when the case starts making itself`
+  ];
 }
 
-function closing(sub, input) {
+function closing(sub, input, parsed) {
   const rawCta = s(input.cta);
 
-  if (!rawCta) return `Visit ${sub}`;
+  if (rawCta) {
+    return speakable(rawCta);
+  }
 
-  const cta = speakable(rawCta);
-  const ctaLower = cta.toLowerCase();
-  const subLower = sub.toLowerCase();
+  const contact = parsed.contact[0];
+  if (contact) return contact;
 
-  const hasActionVerb = /\b(visit|call|come|see|join|stop by|learn more|get tickets|book now|order now)\b/i.test(cta);
-  const mentionsSubject = ctaLower.includes(subLower);
-
-  if (mentionsSubject) return cta;
-  if (!hasActionVerb) return `Visit ${sub}`;
-
-  return cta;
+  return `Visit ${sub}`;
 }
 
-function expansionLines(sub, premise, duration) {
-  if (premise === "event") {
-    const short = [
-      "Bring the family",
-      "Make plans now",
-      "You can already hear how the day goes"
-    ];
+function enrichClose(close, parsed, duration) {
+  const out = [];
 
-    const medium = [
-      "Bring the family",
-      "Make plans now",
-      "This is one of those weekends",
-      "You do not want to miss this one",
-      `That is how weekends like ${sub} earn a crowd`,
-      "Once you hear that, the plan usually makes itself",
-      "Food and music have a way of filling up a day",
-      "That is when the weekend starts to picture itself"
-    ];
-
-    const long = [
-      ...medium,
-      "A good festival has a way of taking over the whole day",
-      "That is usually when the calendar starts to make room for it",
-      "It just sounds like the kind of day people want to have",
-      "A lot of good weekends start exactly like that",
-      "That is usually all the convincing a person needs",
-      "You can already hear how the day goes"
-    ];
-
-    return duration === 15 ? short : duration === 30 ? medium : long;
+  if (duration >= 30 && parsed.contact.length > 0) {
+    for (const item of parsed.contact) {
+      if (s(item).toLowerCase() === s(close).toLowerCase()) continue;
+      out.push(item);
+      if (duration === 30) break;
+      if (out.length >= 2) break;
+    }
   }
 
-  if (premise === "retail") {
-    const short = [
-      "That will usually do it",
-      "Now the choice starts looking easier",
-      "That tends to get a room's attention"
-    ];
-
-    const medium = [
-      "That will usually do it",
-      "Now the choice starts looking easier",
-      "That tends to get a room's attention",
-      "A good deal has a way of speeding up the decision",
-      "This is usually where browsing starts to end",
-      "You wait long enough and somebody else buys it first",
-      "That is when the smart move starts to look obvious",
-      `That is how places like ${sub} earn traffic`
-    ];
-
-    const long = [
-      ...medium,
-      "At some point, the math starts doing the talking",
-      "You can only think about it for so long",
-      "That is usually where hesitation starts losing ground",
-      "The right offer has a way of closing the gap",
-      "That is the difference between looking and deciding",
-      "A deal is only a deal if you move on it"
-    ];
-
-    return duration === 15 ? short : duration === 30 ? medium : long;
-  }
-
-  if (premise === "service") {
-    const short = [
-      "That part matters",
-      "Now the next step is pretty obvious",
-      "That is usually what gets people moving"
-    ];
-
-    const medium = [
-      "That part matters",
-      "Now the next step is pretty obvious",
-      "That is usually what gets people moving",
-      "The problem rarely fixes itself for free",
-      "Putting it off has a way of getting expensive",
-      "This is when a real solution starts sounding good",
-      `That is how businesses like ${sub} earn the call`,
-      "At that point, waiting is not exactly a strategy"
-    ];
-
-    const long = [
-      ...medium,
-      "That is when the practical move becomes the right move",
-      "Most people know the answer before they say it out loud",
-      "There is only so long you can stare at a problem",
-      "Eventually, the fix becomes the plan",
-      "And once you get there, the call tends to make itself",
-      "That is usually how the delay comes to an end"
-    ];
-
-    return duration === 15 ? short : duration === 30 ? medium : long;
-  }
-
-  if (premise === "absurd") {
-    const short = [
-      "They did not exactly bury the lead",
-      "There is no confusion in the pitch",
-      "You cannot say they oversold it"
-    ];
-
-    const medium = [
-      "They did not exactly bury the lead",
-      "There is no confusion in the pitch",
-      "You cannot say they oversold it",
-      "At some point, honesty becomes a kind of strategy",
-      "Even a ridiculous offer lands better when it sounds self-aware",
-      "There is a weird amount of confidence in saying the quiet part out loud",
-      "And somehow, that is what makes people listen",
-      "The straight-faced nonsense is doing its job"
-    ];
-
-    const long = [
-      ...medium,
-      "There is something almost respectable about telling on yourself up front",
-      "A lot of ads would be better if they were this honest",
-      "The joke lands harder when nobody blinks",
-      "And yes, somehow that becomes the point",
-      "Once the premise commits, the copy has to commit with it",
-      "That is where the whole thing stops sounding accidental"
-    ];
-
-    return duration === 15 ? short : duration === 30 ? medium : long;
-  }
-
-  const short = [
-    "That starts to make the case",
-    "Now the picture gets clearer",
-    "That is usually enough to get attention"
-  ];
-
-  const medium = [
-    "That starts to make the case",
-    "Now the picture gets clearer",
-    "That is usually enough to get attention",
-    "This is where the thing starts to land",
-    "A good idea usually gets simpler as it goes",
-    "That is when the choice starts to come into focus",
-    `That is how ${sub} starts to stand out`,
-    "At that point, the move is not hard to see"
-  ];
-
-  const long = [
-    ...medium,
-    "That is when the shape of it gets obvious",
-    "Most decisions do not need much more than that",
-    "The right message usually knows when to stop pushing",
-    "And once it lands, it tends to stay landed",
-    "That is the point where the next step gets easy",
-    "A clear case has a way of making itself"
-  ];
-
-  return duration === 15 ? short : duration === 30 ? medium : long;
+  return out;
 }
 
-function expand(base, duration, sub, premise) {
+function expansionPool(sub, frame) {
+  if (frame === "experience") {
+    return [
+      `Bring the family`,
+      `Make plans now`,
+      `Once you hear that, the day starts to picture itself`,
+      `That is usually enough to fill a calendar`,
+      `Good events have a way of making the decision for you`
+    ];
+  }
+
+  if (frame === "growth") {
+    return [
+      `The right opportunity has a way of clearing the fog`,
+      `That is usually when hesitation starts losing ground`,
+      `A better future sounds different when it feels possible`,
+      `That is when the next chapter stops feeling abstract`,
+      `Real flexibility tends to get a person's attention`
+    ];
+  }
+
+  if (frame === "problem") {
+    return [
+      `At that point, waiting is not exactly a strategy`,
+      `This is when the practical move starts sounding good`,
+      `Most people know the answer before they say it out loud`,
+      `Eventually, the fix becomes the plan`,
+      `That is usually how the delay comes to an end`
+    ];
+  }
+
+  if (frame === "value") {
+    return [
+      `The right offer has a way of shortening the conversation`,
+      `That tends to get a person's attention`,
+      `A smart move usually looks smart pretty quickly`,
+      `That is where browsing starts to end`,
+      `You can only think about it for so long`
+    ];
+  }
+
+  if (frame === "confession") {
+    return [
+      `They did not exactly bury the lead`,
+      `There is no confusion in the pitch`,
+      `You cannot say they oversold it`,
+      `There is a weird amount of confidence in saying the quiet part out loud`,
+      `The straight-faced nonsense is doing its job`
+    ];
+  }
+
+  return [
+    `That starts to make the case`,
+    `Now the picture gets clearer`,
+    `That is usually enough to get attention`,
+    `A good message usually gets simpler as it goes`,
+    `That is when the next step gets easier to see`
+  ];
+}
+
+function expand(base, duration, sub, frame) {
   const wordTarget = TARGET_WORDS[duration];
   const lineTarget = TARGET_LINES[duration];
   const script = [...base];
-  const extras = expansionLines(sub, premise, duration);
+  const extras = expansionPool(sub, frame);
 
   for (const line of extras) {
     const enoughWords = totalWords(script) >= wordTarget.min;
@@ -784,24 +666,37 @@ function expand(base, duration, sub, premise) {
   return script;
 }
 
+function trimToMaxLines(script, duration) {
+  const maxLines = TARGET_LINES[duration].max;
+
+  if (script.length <= maxLines) return script;
+
+  const last = script[script.length - 1];
+  const body = script.slice(0, maxLines - 1);
+
+  return [...body, last];
+}
+
 function buildScript(input, duration) {
   const sub = speakable(subject(input));
-  const det = details(input);
-  const premise = classifyPremise(input);
+  const frame = deriveFrame(input);
+  const parsed = parseBrief(input);
 
-  const act1 = opening(sub, input, duration, premise);
-  const support = buildSupportLines(det, duration, premise, sub);
-  const actThree = act3(sub, premise);
-  const close = closing(sub, input);
+  const act1 = buildAct1(sub, input, frame, duration);
+  const act2 = buildAct2(parsed, duration);
+  const act3 = pick(act3Pool(sub, frame));
+  const close = closing(sub, input, parsed);
+  const closeSupport = enrichClose(close, parsed, duration);
 
   let script = [
     ...act1,
-    ...support,
-    actThree,
+    ...act2,
+    act3,
+    ...closeSupport,
     close
   ].filter(Boolean);
 
-  script = expand(script, duration, sub, premise);
+  script = expand(script, duration, sub, frame);
 
   script = unique(
     script
@@ -812,13 +707,7 @@ function buildScript(input, duration) {
   );
 
   script = script.map(ensurePeriod);
-
-  const maxLines = TARGET_LINES[duration].max;
-  if (script.length > maxLines) {
-    const last = script[script.length - 1];
-    const body = script.slice(0, maxLines - 1);
-    script = [...body, last];
-  }
+  script = trimToMaxLines(script, duration);
 
   return script.join("\n");
 }
