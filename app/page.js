@@ -4,9 +4,9 @@ import { useMemo, useRef, useState } from 'react';
 import VoiceControls from './components/VoiceControls';
 
 const MODES = {
-  '15': { label: ':15', hint: 'Tight. One hook + one benefit + CTA + must-say.' },
-  '30': { label: ':30', hint: 'Add one proof point or quick story beat.' },
-  '60': { label: ':60', hint: 'Two beats + clearer benefit + clean close.' },
+  '15': { label: ':15', hint: 'Tight. One hook + one benefit + CTA.' },
+  '30': { label: ':30', hint: 'Add support + clean close.' },
+  '60': { label: ':60', hint: 'More detail + stronger story.' },
 };
 
 const VOICE_PRESETS = [
@@ -29,6 +29,7 @@ export default function Home() {
   const [tone, setTone] = useState('confident, human, not salesy');
   const [cta, setCta] = useState('');
   const [mustSay, setMustSay] = useState('');
+  const [tag, setTag] = useState('');
   const [details, setDetails] = useState('');
 
   const [voicePreset, setVoicePreset] = useState('executive');
@@ -40,9 +41,7 @@ export default function Home() {
   const modeHint = useMemo(() => MODES[mode]?.hint ?? '', [mode]);
 
   function cleanScriptForVoice(text) {
-    return String(text || '')
-      .replace(/^\[\[.*?\]\]\s*/m, '')
-      .trim();
+    return String(text || '').replace(/^\[\[.*?\]\]\s*/m, '').trim();
   }
 
   async function generate(nextMode) {
@@ -59,6 +58,7 @@ export default function Home() {
         offer && `OFFER: ${offer}`,
         cta && `CTA: ${cta}`,
         mustSay && `MUST-SAY: ${mustSay}`,
+        tag && `TAG: ${tag}`,
         details && `DETAILS: ${details}`,
       ]
         .filter(Boolean)
@@ -73,8 +73,9 @@ export default function Home() {
         tone,
         cta,
         mustSay,
+        tag,
         details,
-        brief: { brand, offer, audience, tone, cta, mustSay, details },
+        brief: { brand, offer, audience, tone, cta, mustSay, tag, details },
       };
 
       const r = await fetch('/api/generate', {
@@ -103,7 +104,6 @@ export default function Home() {
 
   async function playVoice() {
     const script = cleanScriptForVoice(out);
-
     if (!script || script.startsWith('Error:')) return;
 
     setVoiceBusy(true);
@@ -118,10 +118,7 @@ export default function Home() {
       const r = await fetch('/api/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          script,
-          voicePreset,
-        }),
+        body: JSON.stringify({ script, voicePreset }),
       });
 
       if (!r.ok) {
@@ -140,9 +137,7 @@ export default function Home() {
 
       audioRef.current = audio;
 
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-      };
+      audio.onended = () => URL.revokeObjectURL(url);
 
       await audio.play();
     } catch (e) {
@@ -166,6 +161,7 @@ export default function Home() {
     setTone('confident, human, not salesy');
     setCta('');
     setMustSay('');
+    setTag('');
     setDetails('');
     setOut('');
     setVersion('');
@@ -188,230 +184,37 @@ export default function Home() {
   const labelStyle = { fontSize: 12, color: '#b5b5b5', marginTop: 14 };
 
   return (
-    <main
-      style={{
-        minHeight: '100vh',
-        background: '#0b0b0b',
-        color: '#ffffff',
-        padding: '42px 24px',
-        fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
-      }}
-    >
-      <div style={{ maxWidth: 960, margin: '0 auto', position: 'relative' }}>
-        <button
-          type="button"
-          title="Coming soon"
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            background: 'transparent',
-            color: '#b5b5b5',
-            border: '1px solid #2a2a2a',
-            padding: '8px 12px',
-            borderRadius: 8,
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-          onClick={() => alert('Control Room is coming next.')}
-        >
-          Control Room
-        </button>
+    <main style={{ minHeight: '100vh', background: '#0b0b0b', color: '#fff', padding: '42px 24px' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+        <h1 style={{ fontSize: 42 }}>DEX RADIO</h1>
 
-        <h1 style={{ fontSize: 46, margin: 0, letterSpacing: 0.5 }}>DEX RADIO-TEST</h1>
-        <div style={{ marginTop: 6, color: '#b5b5b5', fontSize: 16 }}>
-          <span style={{ fontWeight: 600, color: '#eaeaea' }}>Radio copy.</span> On demand.
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <input placeholder="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} style={inputStyle} />
+          <input placeholder="Offer" value={offer} onChange={(e) => setOffer(e.target.value)} style={inputStyle} />
+          <input placeholder="Audience" value={audience} onChange={(e) => setAudience(e.target.value)} style={inputStyle} />
+          <input placeholder="Tone" value={tone} onChange={(e) => setTone(e.target.value)} style={inputStyle} />
+          <input placeholder="CTA" value={cta} onChange={(e) => setCta(e.target.value)} style={inputStyle} />
+          <input placeholder="Must-Say" value={mustSay} onChange={(e) => setMustSay(e.target.value)} style={inputStyle} />
+          <input placeholder="Tag / Legal Disclaimer" value={tag} onChange={(e) => setTag(e.target.value)} style={inputStyle} />
         </div>
 
-        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Intake</div>
+        <div style={labelStyle}>Details</div>
+        <textarea value={details} onChange={(e) => setDetails(e.target.value)} rows={5} style={inputStyle} />
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
-          <div>
-            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Brand</div>
-            <input value={brand} onChange={(e) => setBrand(e.target.value)} style={inputStyle} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Offer</div>
-            <input value={offer} onChange={(e) => setOffer(e.target.value)} style={inputStyle} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Audience</div>
-            <input value={audience} onChange={(e) => setAudience(e.target.value)} style={inputStyle} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Tone</div>
-            <input value={tone} onChange={(e) => setTone(e.target.value)} style={inputStyle} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: '#b5b5b5' }}>CTA</div>
-            <input value={cta} onChange={(e) => setCta(e.target.value)} style={inputStyle} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 12, color: '#b5b5b5' }}>Must-say (legal / required)</div>
-            <input value={mustSay} onChange={(e) => setMustSay(e.target.value)} style={inputStyle} />
-          </div>
+        <div style={{ marginTop: 20 }}>
+          {Object.keys(MODES).map((k) => (
+            <button key={k} onClick={() => { setMode(k); generate(k); }}>
+              {MODES[k].label}
+            </button>
+          ))}
         </div>
 
-        <div style={labelStyle}>Details (optional)</div>
-        <textarea
-          value={details}
-          onChange={(e) => setDetails(e.target.value)}
-          rows={6}
-          placeholder="Any specifics: price, dates, location, qualifiers, phone, URL, station line, etc."
-          style={{ ...inputStyle, marginTop: 8 }}
-        />
-
-        <VoiceControls
-          onTranscript={(text) => {
-            setDetails((prev) => (prev ? `${prev}\n${text}` : text));
-          }}
-          spokenText={out}
-        />
-
-        <div style={{ marginTop: 14, fontSize: 12, color: '#b5b5b5' }}>Spot length</div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          {Object.entries(MODES).map(([k, v]) => {
-            const active = mode === k;
-            return (
-              <button
-                key={k}
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setMode(k);
-                  generate(k);
-                }}
-                style={{
-                  background: active ? '#ffffff' : 'transparent',
-                  color: active ? '#000' : '#fff',
-                  border: active ? '1px solid #fff' : '1px solid #2a2a2a',
-                  padding: '10px 14px',
-                  borderRadius: 999,
-                  fontSize: 14,
-                  cursor: busy ? 'not-allowed' : 'pointer',
-                  opacity: busy ? 0.6 : 1,
-                }}
-                title={busy ? 'Generating…' : `Generate a ${v.label} script`}
-              >
-                {busy && active ? 'Generating…' : v.label}
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={reset}
-            disabled={busy}
-            style={{
-              background: 'transparent',
-              color: '#fff',
-              padding: '10px 14px',
-              borderRadius: 10,
-              border: '1px solid #2a2a2a',
-              fontSize: 14,
-              cursor: busy ? 'not-allowed' : 'pointer',
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            Reset
-          </button>
-
-          <div style={{ fontSize: 12, color: '#7a7a7a', marginLeft: 4 }}>
-            {modeHint}
-          </div>
+        <div style={{ marginTop: 20, whiteSpace: 'pre-wrap' }}>
+          {out || 'Output appears here'}
         </div>
 
-        <div style={{ marginTop: 22, fontSize: 12, color: '#b5b5b5' }}>Output</div>
-        <div
-          style={{
-            marginTop: 8,
-            background: '#0f0f0f',
-            border: '1px solid #2a2a2a',
-            borderRadius: 10,
-            padding: 14,
-            minHeight: 160,
-            fontSize: 14,
-            lineHeight: 1.55,
-            whiteSpace: 'pre-wrap',
-            color: out ? '#fff' : '#7a7a7a',
-          }}
-        >
-          {out || 'Output will appear here'}
-        </div>
-
-        <div style={{ marginTop: 18, fontSize: 12, color: '#b5b5b5' }}>Voice preset</div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select
-            value={voicePreset}
-            onChange={(e) => setVoicePreset(e.target.value)}
-            style={{
-              background: '#0f0f0f',
-              color: '#fff',
-              border: '1px solid #2a2a2a',
-              borderRadius: 10,
-              padding: '12px 14px',
-              fontSize: 14,
-              minWidth: 240,
-            }}
-          >
-            {VOICE_PRESETS.map((voice) => (
-              <option key={voice.value} value={voice.value}>
-                {voice.label}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={playVoice}
-            disabled={!out || busy || voiceBusy || out.startsWith('Error:')}
-            style={{
-              background: '#ffffff',
-              color: '#000',
-              border: '1px solid #fff',
-              padding: '10px 14px',
-              borderRadius: 10,
-              fontSize: 14,
-              cursor: !out || busy || voiceBusy || out.startsWith('Error:') ? 'not-allowed' : 'pointer',
-              opacity: !out || busy || voiceBusy || out.startsWith('Error:') ? 0.6 : 1,
-            }}
-          >
-            {voiceBusy ? 'Building voice…' : 'Play announcer voice'}
-          </button>
-
-          <button
-            type="button"
-            onClick={stopVoice}
-            disabled={voiceBusy}
-            style={{
-              background: 'transparent',
-              color: '#fff',
-              padding: '10px 14px',
-              borderRadius: 10,
-              border: '1px solid #2a2a2a',
-              fontSize: 14,
-              cursor: voiceBusy ? 'not-allowed' : 'pointer',
-              opacity: voiceBusy ? 0.6 : 1,
-            }}
-          >
-            Stop
-          </button>
-        </div>
-
-        {!!voiceError && (
-          <div style={{ marginTop: 10, fontSize: 12, color: '#ff8b8b' }}>
-            {voiceError}
-          </div>
-        )}
-
-        <div style={{ marginTop: 8, fontSize: 12, color: '#7a7a7a' }}>
-          {version ? `API version: ${version}` : ''}
-        </div>
+        <button onClick={playVoice}>Play Voice</button>
+        <button onClick={reset}>Reset</button>
       </div>
     </main>
   );
