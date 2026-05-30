@@ -93,7 +93,7 @@ export async function POST(req) {
     const offer = s(body.offer);
     const audience = s(body.audience);
     const cta = s(body.cta);
-    const details = s(body.details || body.text);
+   const details = s(body.details);
     const mustSay = s(body.mustSay);
 
     let script =
