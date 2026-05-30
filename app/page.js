@@ -56,12 +56,12 @@ export default function Home() {
 
     try {
       const equationText = [
-        brand && `BRAND: ${brand}`,
-        offer && `OFFER: ${offer}`,
-        cta && `CTA: ${cta}`,
-        mustSay && `MUST-SAY: ${mustSay}`,
-        tag && `TAG: ${tag}`,
-        details && `DETAILS: ${details}`,
+        brand,
+        offer,
+        cta,
+        mustSay,
+        tag,
+        details,
       ]
         .filter(Boolean)
         .join('\n');
