@@ -14,14 +14,15 @@ function pickDuration(body) {
 }
 
 function weakOffer(offer) {
-  const o = offer.toLowerCase();
+  const o = offer.toLowerCase().trim();
+
   return (
-    !offer ||
-    o === "we do plumbing" ||
-    o === "we are plumbers" ||
+    !o ||
+    o.includes("we are plumber") ||
+    o.includes("we do plumbing") ||
     o === "plumbing" ||
     o === "services" ||
-    o.length < 14
+    o.length < 18
   );
 }
 
@@ -39,7 +40,18 @@ function buildOffer({ brand, offer, details }) {
 
 function buildCTA({ brand, cta }) {
   if (cta) return cta;
-  return `Call ${brand} today.`;
+  return `function weakOffer(offer) {
+  const o = offer.toLowerCase().trim();
+
+  return (
+    !o ||
+    o.includes("we are plumber") ||
+    o.includes("we do plumbing") ||
+    o === "plumbing" ||
+    o === "services" ||
+    o.length < 18
+  );
+}Call ${brand} today.`;
 }
 
 function build15({ brand, offer, audience, cta, details }) {
